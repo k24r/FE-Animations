@@ -1,0 +1,1343 @@
+--[[
+	Bundle Animations v2 - sin catalogo
+	- Pega un ID/URL (emote o pack) o haz un emote en tu juego: el menu lo detecta
+	  y abre una mini ventana para GUARDARLO (y marcarlo como favorito).
+	- Pestanas: BUNDLES (packs guardados) / EMOTES (emotes guardados) / MIX / FAVS
+	- Ajustes aparte (velocidad, seguir emote al moverse, detectar emotes, tecla del menu)
+	- Todo se guarda con writefile/readfile en BundleAnimations/config.json
+]]
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local AssetService = game:GetService("AssetService")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+local LP = Players.LocalPlayer
+
+if getgenv then
+	pcall(function()
+		if getgenv().__BA_UNLOAD then getgenv().__BA_UNLOAD() end
+	end)
+end
+
+----------------------------------------------------------------
+-- Utilidades
+----------------------------------------------------------------
+local conns = {}
+local function connect(signal, fn)
+	local c = signal:Connect(fn)
+	table.insert(conns, c)
+	return c
+end
+
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props or {}) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
+
+local function corner(o, r)
+	new("UICorner", { CornerRadius = UDim.new(0, r or 6) }, o)
+	return o
+end
+
+local C = {
+	bg = Color3.fromRGB(14, 14, 16),
+	panel = Color3.fromRGB(24, 24, 27),
+	card = Color3.fromRGB(30, 30, 34),
+	btn = Color3.fromRGB(38, 38, 43),
+	thumb = Color3.fromRGB(16, 16, 18),
+	txt = Color3.fromRGB(235, 235, 235),
+	dim = Color3.fromRGB(135, 135, 145),
+	white = Color3.fromRGB(255, 255, 255),
+	black = Color3.fromRGB(10, 10, 10),
+	gold = Color3.fromRGB(255, 205, 60),
+}
+
+----------------------------------------------------------------
+-- Configuracion guardada
+----------------------------------------------------------------
+local DIR = "BundleAnimations"
+local FILE = DIR .. "/config.json"
+
+local Config = {
+	menuKey = "RightControl",
+	speed = 1,
+	keepEmote = false,
+	detect = true,
+	emotes = {},   -- biblioteca: { {kind="emote", id="123", name="..."} }
+	packs = {},    -- biblioteca: { {kind="bundle", id="456", name="..."} }
+	favs = {},     -- favoritos (emotes y packs)
+	hotkeys = {},  -- ["emote:123"] = {kind=, id=, name=, key="B"}
+	mix = {},
+	w = 590,
+	h = 490,
+}
+
+pcall(function()
+	if makefolder and isfolder and not isfolder(DIR) then makefolder(DIR) end
+	if isfile and readfile and isfile(FILE) then
+		local data = HttpService:JSONDecode(readfile(FILE))
+		for k, v in pairs(data) do
+			if type(Config[k]) == type(v) then Config[k] = v end
+		end
+	end
+end)
+
+local saveToken = 0
+local function save()
+	saveToken += 1
+	local t = saveToken
+	task.delay(0.4, function()
+		if t ~= saveToken then return end
+		pcall(function()
+			if writefile then writefile(FILE, HttpService:JSONEncode(Config)) end
+		end)
+	end)
+end
+
+----------------------------------------------------------------
+-- Informacion de assets y packs (sin catalogo web)
+----------------------------------------------------------------
+local animCache = {}
+local function resolveAnimId(assetId)
+	assetId = tostring(assetId)
+	if animCache[assetId] then return animCache[assetId] end
+	local result = "rbxassetid://" .. assetId
+	pcall(function()
+		local objs = game:GetObjects("rbxassetid://" .. assetId)
+		local obj = objs and objs[1]
+		if obj then
+			if obj:IsA("Animation") and obj.AnimationId ~= "" then
+				result = obj.AnimationId
+			else
+				local a = obj:FindFirstChildWhichIsA("Animation", true)
+				if a and a.AnimationId ~= "" then result = a.AnimationId end
+			end
+		end
+	end)
+	animCache[assetId] = result
+	return result
+end
+
+local function parseId(text)
+	text = tostring(text or "")
+	local b = text:match("/bundles/(%d+)")
+	if b then return b, true end
+	local id = text:match("(%d+)")
+	return id, false
+end
+
+local function normId(s)
+	return s and tostring(s):match("%d+")
+end
+
+local function assetInfo(id)
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Asset)
+	end)
+	if ok and type(info) == "table" then return info end
+end
+
+local function bundleInfo(id)
+	local ok, d = pcall(function() return AssetService:GetBundleDetailsAsync(tonumber(id)) end)
+	if ok and type(d) == "table" and d.Items then return d end
+	local ok2, d2 = pcall(function()
+		return MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Bundle)
+	end)
+	if ok2 and type(d2) == "table" and d2.Items then return d2 end
+end
+
+local ANIM_TYPES = { [24] = true, [61] = true }
+for t = 48, 56 do ANIM_TYPES[t] = true end
+
+-- Decide si lo pegado es un emote o un pack de animaciones
+local function identify(text, tabHint)
+	local id, urlBundle = parseId(text)
+	if not id then return nil, "Invalid ID or link" end
+	if urlBundle then
+		local b = bundleInfo(id)
+		if b then return { kind = "bundle", id = id, name = b.Name or ("Pack " .. id), info = b } end
+		return nil, "Pack not found"
+	end
+	local catalogUrl = tostring(text):find("/catalog/", 1, true) ~= nil
+	local function tryBundle()
+		local b = bundleInfo(id)
+		if b then return { kind = "bundle", id = id, name = b.Name or ("Pack " .. id), info = b } end
+	end
+	local function tryAsset()
+		local a = assetInfo(id)
+		if a then
+			if a.AssetTypeId and not ANIM_TYPES[a.AssetTypeId] then return nil, "That ID is not an animation" end
+			return { kind = "emote", id = id, name = a.Name or ("Emote " .. id) }
+		end
+	end
+	if tabHint == "bundles" and not catalogUrl then
+		local b = tryBundle()
+		if b then return b end
+		local e, err = tryAsset()
+		if e or err then return e, err end
+	else
+		local e, err = tryAsset()
+		if e or err then return e, err end
+		if not catalogUrl then
+			local b = tryBundle()
+			if b then return b end
+		end
+	end
+	return { kind = "emote", id = id, name = "Emote " .. id }
+end
+
+----------------------------------------------------------------
+-- Personaje / animaciones
+----------------------------------------------------------------
+local Char, Hum, Animator
+local function refreshChar()
+	Char = LP.Character
+	Hum = Char and Char:FindFirstChildOfClass("Humanoid")
+	Animator = Hum and Hum:FindFirstChildWhichIsA("Animator", true)
+	return Animator ~= nil
+end
+refreshChar()
+
+local notify, showPreview, showTab, refreshPreviewButtons -- se definen mas abajo
+
+local ourTracks = setmetatable({}, { __mode = "k" }) -- tracks creados por este script
+local emote = { track = nil, id = nil, token = 0, startedAt = 0 }
+local clickImg = { image = nil, t = 0 } -- ultima imagen clickeada en la GUI del juego
+
+-- IDs de animacion que usa el script Animate (idle, walk, run...)
+local function animateIdSet()
+	local set = {}
+	local an = Char and Char:FindFirstChild("Animate")
+	if an then
+		for _, d in ipairs(an:GetDescendants()) do
+			if d:IsA("Animation") then
+				local n = normId(d.AnimationId)
+				if n then set[n] = true end
+			end
+		end
+	end
+	return set
+end
+
+-- Un "emote del juego" = animacion de prioridad Action que no viene de Animate
+local function isGameEmoteTrack(t, set)
+	local pr = t.Priority.Value
+	if pr < 2 or pr > 5 then return false end
+	local anim = t.Animation
+	local id = anim and normId(anim.AnimationId)
+	return id ~= nil and not set[id]
+end
+
+local function stopGameEmotes()
+	if not Animator then return end
+	local set = animateIdSet()
+	for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+		if not ourTracks[t] and isGameEmoteTrack(t, set) then
+			pcall(function() t:Stop(0.1) end)
+		end
+	end
+end
+
+local function stopEmote(fade)
+	emote.token += 1
+	if emote.track then
+		pcall(function() emote.track:Stop(fade or 0.2) end)
+	end
+	emote.track = nil
+	emote.id = nil
+end
+
+-- Reproduce un emote.
+-- Si presionas el mismo emote mientras está reproduciéndose, lo detiene.
+-- Si eliges otro emote, detiene el anterior y reproduce el nuevo.
+local function playEmote(id, name, silent, img)
+	id = tostring(id)
+
+	if not refreshChar() then
+		notify("No character / Animator found")
+		return
+	end
+
+	-- Si este mismo emote ya está reproduciéndose, detenerlo.
+	if emote.id == id and emote.track and emote.track.IsPlaying then
+		stopEmote(0.2)
+
+		if not silent then
+			notify("Emote stopped: " .. tostring(name))
+		end
+
+		return
+	end
+
+	-- Si es otro emote, detener el anterior antes de reproducir el nuevo.
+	stopEmote(0)
+	stopGameEmotes()
+	local token = emote.token
+	emote.id = id
+	task.spawn(function()
+		local animId = resolveAnimId(id)
+		if token ~= emote.token then return end
+		local a = Instance.new("Animation")
+		a.AnimationId = animId
+		local ok, track = pcall(function() return Animator:LoadAnimation(a) end)
+		if not ok or not track then
+			emote.id = nil
+			notify("Could not load emote")
+			return
+		end
+		ourTracks[track] = true
+		track.Priority = Enum.AnimationPriority.Action4
+		track:Play(0.1, 1, Config.speed)
+		track.TimePosition = 0
+		emote.track = track
+		emote.startedAt = os.clock()
+		track.Stopped:Connect(function()
+			if emote.track == track then emote.track = nil; emote.id = nil end
+		end)
+		notify("Emote: " .. tostring(name))
+		if not silent then
+			showPreview({ kind = "emote", id = id, name = name, img = img }, "NOW PLAYING")
+		end
+	end)
+end
+
+local SLOT_ORDER = { "idle", "walk", "run", "jump", "fall", "climb", "swim" }
+local SLOT_PATHS = {
+	idle = { { "idle", "Animation1" }, { "idle", "Animation2" } },
+	walk = { { "walk", "WalkAnim" } },
+	run = { { "run", "RunAnim" } },
+	jump = { { "jump", "JumpAnim" } },
+	fall = { { "fall", "FallAnim" } },
+	climb = { { "climb", "ClimbAnim" } },
+	swim = { { "swim", "Swim" } },
+}
+
+local original = {}
+local currentSlots = {}
+
+local function setAnimateDisabled(animate, v)
+	pcall(function() animate.Disabled = v end)
+	pcall(function() animate.Enabled = not v end)
+end
+
+local function writeSlots(animate)
+	for slot, id in pairs(currentSlots) do
+		for _, p in ipairs(SLOT_PATHS[slot] or {}) do
+			local f = animate:FindFirstChild(p[1])
+			local v = f and f:FindFirstChild(p[2])
+			if v then
+				local key = p[1] .. "." .. p[2]
+				if original[key] == nil then original[key] = v.AnimationId end
+				v.AnimationId = id
+			end
+		end
+	end
+end
+
+local function restartAnimate(animate)
+	setAnimateDisabled(animate, true)
+	if Animator then
+		for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+			if t ~= emote.track then pcall(function() t:Stop(0) end) end
+		end
+	end
+	task.wait()
+	setAnimateDisabled(animate, false)
+end
+
+local function applySlots(slots)
+	refreshChar()
+	local animate = Char and Char:FindFirstChild("Animate")
+	if not animate then
+		notify("No 'Animate' script found in your character")
+		return false
+	end
+	for s, id in pairs(slots) do currentSlots[s] = id end
+	writeSlots(animate)
+	restartAnimate(animate)
+	return true
+end
+
+local function slotsFromInfo(info)
+	local slots = {}
+	for _, it in ipairs(info.Items or {}) do
+		local iid = it.Id or it.id
+		local itype = it.Type or it.type
+		if itype == "Asset" and iid then
+			local n = string.lower(it.Name or it.name or "")
+			for _, s in ipairs(SLOT_ORDER) do
+				if n:find(s, 1, true) then
+					if not slots[s] then slots[s] = resolveAnimId(iid) end
+					break
+				end
+			end
+		end
+	end
+	return slots
+end
+
+local function applyBundle(item, silent)
+	task.spawn(function()
+		notify("Applying pack...")
+		local info = item.info or bundleInfo(item.id)
+		if not info then
+			notify("Could not read pack " .. tostring(item.id))
+			return
+		end
+		local slots = slotsFromInfo(info)
+		if next(slots) == nil then
+			notify("That pack has no walk/run/idle animations")
+			return
+		end
+		if applySlots(slots) then
+			notify("Pack: " .. tostring(item.name))
+			if not silent then
+				local names = {}
+				for _, s in ipairs(SLOT_ORDER) do
+					if slots[s] then table.insert(names, s) end
+				end
+				showPreview({ kind = "bundle", id = tostring(item.id), name = item.name }, "PACK APPLIED", table.concat(names, ", "))
+			end
+		end
+	end)
+end
+
+local function resetAnimations()
+	stopEmote()
+	refreshChar()
+	local animate = Char and Char:FindFirstChild("Animate")
+	currentSlots = {}
+	if animate then
+		for key, id in pairs(original) do
+			local f, n = key:match("([^.]+)%.(.+)")
+			local folder = f and animate:FindFirstChild(f)
+			local v = folder and folder:FindFirstChild(n)
+			if v then v.AnimationId = id end
+		end
+		original = {}
+		task.spawn(restartAnimate, animate)
+	end
+	notify("Animations reset")
+end
+
+connect(LP.CharacterAdded, function(c)
+	original = {}
+	emote.track = nil
+	emote.id = nil
+	task.spawn(function()
+		c:WaitForChild("Humanoid", 10)
+		c:WaitForChild("Animate", 10)
+		task.wait(0.6)
+		refreshChar()
+		if next(currentSlots) then applySlots({}) end
+	end)
+end)
+
+----------------------------------------------------------------
+-- Biblioteca (guardados) y favoritos
+----------------------------------------------------------------
+local function libList(kind) return kind == "bundle" and Config.packs or Config.emotes end
+local function libIndex(item)
+	for i, v in ipairs(libList(item.kind)) do
+		if tostring(v.id) == tostring(item.id) then return i end
+	end
+end
+local function favIndex(item)
+	for i, f in ipairs(Config.favs) do
+		if f.kind == item.kind and tostring(f.id) == tostring(item.id) then return i end
+	end
+end
+local function hkKey(item) return item.kind .. ":" .. tostring(item.id) end
+
+local function saveItem(item, fav)
+	local name = (item.name and item.name ~= "") and item.name or ((item.kind == "bundle" and "Pack " or "Emote ") .. tostring(item.id))
+	local entry = { kind = item.kind, id = tostring(item.id), name = name, img = item.img }
+	if not libIndex(entry) then table.insert(libList(entry.kind), entry) end
+	if fav and not favIndex(entry) then
+		table.insert(Config.favs, { kind = entry.kind, id = entry.id, name = entry.name, img = entry.img })
+	end
+	save()
+	refreshPreviewButtons()
+	showTab(nil)
+end
+
+local function removeItem(item)
+	local list = libList(item.kind)
+	local i = libIndex(item)
+	if i then table.remove(list, i) end
+	local fi = favIndex(item)
+	if fi then table.remove(Config.favs, fi) end
+	Config.hotkeys[hkKey(item)] = nil
+	save()
+	refreshPreviewButtons()
+	showTab(nil)
+end
+
+local function activate(item)
+	if item.kind == "bundle" then
+		applyBundle({ kind = "bundle", id = item.id, name = item.name }, true)
+	else
+		playEmote(item.id, item.name, true)
+	end
+end
+
+----------------------------------------------------------------
+-- Velocidad, cancelar emote al moverse, deteccion de emotes del juego
+----------------------------------------------------------------
+local prevPlaying = {}
+local function detectEmotes()
+	if not Animator then return end
+	local cur = {}
+	local animateSet
+	for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+		cur[t] = true
+		-- solo cuenta cuando una animacion EMPIEZA (asi se detecta cada vez que se repite)
+		if not prevPlaying[t] and not ourTracks[t] then
+			animateSet = animateSet or animateIdSet()
+			if not (Char and Char:FindFirstChildOfClass("Tool")) and isGameEmoteTrack(t, animateSet) then
+				-- el juego empezo un emote: se corta el nuestro para no mezclar dos
+				if emote.track then stopEmote(0.1) end
+				local id = normId(t.Animation.AnimationId)
+				if Config.detect and id and not libIndex({ kind = "emote", id = id }) then
+					local img = (clickImg.image and os.clock() - clickImg.t < 2.5) and clickImg.image or nil
+					task.spawn(function()
+						local info = assetInfo(id)
+						local name = info and info.Name or ("Emote " .. id)
+						if not img and info and info.IconImageAssetId and info.IconImageAssetId ~= 0 then
+							img = "rbxassetid://" .. tostring(info.IconImageAssetId)
+						end
+						showPreview({ kind = "emote", id = id, name = name, img = img }, "EMOTE DETECTED", nil, 25)
+					end)
+				end
+			end
+		end
+	end
+	prevPlaying = cur
+end
+
+local speedModified = false
+local lastCheck = 0
+connect(RunService.Heartbeat, function()
+	if not Animator or not Animator.Parent then refreshChar() end
+	if emote.track then
+		pcall(function() emote.track:AdjustSpeed(Config.speed) end)
+		if not Config.keepEmote and Hum and os.clock() - emote.startedAt > 0.35 then
+			local st = Hum:GetState()
+			if Hum.MoveDirection.Magnitude > 0.1 or st == Enum.HumanoidStateType.Jumping or st == Enum.HumanoidStateType.Freefall then
+				stopEmote()
+			end
+		end
+	elseif Animator then
+		if math.abs(Config.speed - 1) > 0.001 then
+			speedModified = true
+			for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+				pcall(function() t:AdjustSpeed(Config.speed) end)
+			end
+		elseif speedModified then
+			speedModified = false
+			for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+				pcall(function() t:AdjustSpeed(1) end)
+			end
+		end
+	end
+	if os.clock() - lastCheck > 0.15 then
+		lastCheck = os.clock()
+		pcall(detectEmotes)
+	end
+end)
+
+----------------------------------------------------------------
+-- GUI base
+----------------------------------------------------------------
+local gui = new("ScreenGui", {
+	Name = HttpService:GenerateGUID(false),
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	DisplayOrder = 999,
+})
+do
+	local ok = pcall(function()
+		if syn and syn.protect_gui then syn.protect_gui(gui) end
+		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+	end)
+	if not ok or not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+end
+
+-- Cuando haces click en la GUI de tu juego (por ejemplo "reproducir emote"), guarda la imagen
+-- mas grande de ese boton/tarjeta para usarla como miniatura del emote detectado.
+local function findImageNear(obj)
+	local node = obj
+	for _ = 1, 6 do
+		if not node or node:IsA("PlayerGui") or node:IsA("LayerCollector") then break end
+		local best, bestArea = nil, 0
+		local list = { node }
+		for _, d in ipairs(node:GetDescendants()) do list[#list + 1] = d end
+		for _, d in ipairs(list) do
+			if (d:IsA("ImageLabel") or d:IsA("ImageButton")) and d.Image ~= "" and d.Visible
+				and d.AbsoluteSize.X >= 40 and d.AbsoluteSize.Y >= 40 then
+				local area = d.AbsoluteSize.X * d.AbsoluteSize.Y
+				if area > bestArea and area < 300000 then best, bestArea = d, area end
+			end
+		end
+		if best then return best.Image end
+		node = node.Parent
+	end
+end
+
+connect(UIS.InputBegan, function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	pcall(function()
+		local pg = LP:FindFirstChildOfClass("PlayerGui")
+		if not pg then return end
+		for _, o in ipairs(pg:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)) do
+			if not o:IsDescendantOf(gui) then
+				local img = findImageNear(o)
+				if img then
+					clickImg.image, clickImg.t = img, os.clock()
+				end
+				return
+			end
+		end
+	end)
+end)
+
+local function draggable(handle, frame)
+	local dragging, dragStart, startPos = false, nil, nil
+	connect(handle.InputBegan, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = i.Position
+			startPos = frame.Position
+		end
+	end)
+	connect(UIS.InputChanged, function(i)
+		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+	connect(UIS.InputEnded, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+end
+
+local function makeButton(props, parent)
+	local b = new("TextButton", {
+		BackgroundColor3 = C.btn, BorderSizePixel = 0, AutoButtonColor = true,
+		Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.txt,
+	}, nil)
+	for k, v in pairs(props) do b[k] = v end
+	b.Parent = parent
+	corner(b, 6)
+	return b
+end
+
+local function makeBox(props, parent)
+	local t = new("TextBox", {
+		BackgroundColor3 = C.panel, BorderSizePixel = 0, Font = Enum.Font.Gotham, TextSize = 13,
+		TextColor3 = C.txt, PlaceholderColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+		ClearTextOnFocus = false,
+	}, nil)
+	for k, v in pairs(props) do t[k] = v end
+	t.Parent = parent
+	corner(t, 6)
+	new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, t)
+	return t
+end
+
+local capture = nil
+
+----------------------------------------------------------------
+-- Ventana principal
+----------------------------------------------------------------
+local Main = new("Frame", {
+	Name = "Main", BackgroundColor3 = C.bg, BorderSizePixel = 0,
+	Size = UDim2.fromOffset(Config.w, Config.h),
+	Position = UDim2.new(0.5, -math.floor(Config.w / 2), 0.5, -math.floor(Config.h / 2)),
+	ClipsDescendants = true,
+}, gui)
+corner(Main, 10)
+new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, Main)
+
+local Title = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) }, Main)
+local logo = new("Frame", { BackgroundColor3 = C.white, Position = UDim2.fromOffset(12, 10), Size = UDim2.fromOffset(24, 24), BorderSizePixel = 0 }, Title)
+corner(logo, 5)
+new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "▶", Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = C.black }, logo)
+new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(46, 0), Size = UDim2.new(1, -140, 1, 0),
+	Text = "BUNDLE ANIMATIONS", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = C.txt,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Title)
+local CloseBtn = makeButton({ Text = "X", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -38, 0, 9) }, Title)
+local MinBtn = makeButton({ Text = "–", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -72, 0, 9) }, Title)
+draggable(Title, Main)
+
+local SearchBox = makeBox({
+	PlaceholderText = "Zombie, Cute", Text = "",
+	Position = UDim2.fromOffset(10, 48), Size = UDim2.new(1, -130, 0, 34),
+}, Main)
+local SearchBtn = makeButton({
+	Text = "SEARCH", Position = UDim2.new(1, -110, 0, 48), Size = UDim2.fromOffset(100, 34),
+	BackgroundColor3 = C.white, TextColor3 = C.black,
+}, Main)
+local IdBox = makeBox({
+	PlaceholderText = "Url or ID", Text = "",
+	Position = UDim2.fromOffset(10, 92), Size = UDim2.new(1, -130, 0, 34),
+}, Main)
+local ApplyBtn = makeButton({ Text = "APPLY", Position = UDim2.new(1, -110, 0, 92), Size = UDim2.fromOffset(100, 34) }, Main)
+
+local TabRow = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 136), Size = UDim2.new(1, -20, 0, 34) }, Main)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+}, TabRow)
+
+local tabButtons = {}
+local function tabBtn(key, text, scale, order)
+	local b = makeButton({ Text = text, Size = UDim2.new(scale, 0, 1, 0), LayoutOrder = order }, TabRow)
+	tabButtons[key] = b
+	return b
+end
+tabBtn("bundles", "BUNDLES", 0.17, 1)
+tabBtn("emotes", "EMOTES", 0.16, 2)
+tabBtn("mix", "MIX", 0.11, 3)
+tabBtn("favs", "★ FAVS", 0.13, 4)
+local GearBtn = makeButton({ Text = "⚙", TextSize = 16, Size = UDim2.new(0.07, 0, 1, 0), LayoutOrder = 5 }, TabRow)
+local StopBtn = makeButton({ Text = "STOP", Size = UDim2.new(0.12, 0, 1, 0), LayoutOrder = 6 }, TabRow)
+local ResetBtn = makeButton({ Text = "RESET", Size = UDim2.new(0.12, 0, 1, 0), LayoutOrder = 7 }, TabRow)
+
+local Content = new("Frame", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 178), Size = UDim2.new(1, -20, 1, -210), ClipsDescendants = true,
+}, Main)
+
+local Grid = new("ScrollingFrame", {
+	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
+	ScrollBarThickness = 4, ScrollBarImageColor3 = C.dim,
+	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, Content)
+local GridLayout = new("UIGridLayout", {
+	CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+	CellSize = UDim2.fromOffset(170, 190),
+}, Grid)
+new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, Grid)
+
+local EmptyLabel = new("TextLabel", {
+	BackgroundTransparency = 1, Size = UDim2.new(1, -40, 0, 80), Position = UDim2.new(0, 20, 0.5, -40),
+	Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = C.dim, TextWrapped = true, Text = "", Visible = false,
+}, Content)
+
+local MixPage = new("ScrollingFrame", {
+	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false,
+	ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, Content)
+new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, MixPage)
+new("UIPadding", { PaddingRight = UDim.new(0, 8) }, MixPage)
+
+local Status = new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.new(0, 12, 1, -26), Size = UDim2.new(1, -50, 0, 22),
+	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left, Text = "",
+}, Main)
+
+local Grip = new("TextButton", {
+	BackgroundTransparency = 1, Text = "◢", TextColor3 = C.dim, TextSize = 14, Font = Enum.Font.GothamBold,
+	Position = UDim2.new(1, -24, 1, -24), Size = UDim2.fromOffset(22, 22), ZIndex = 5,
+}, Main)
+
+----------------------------------------------------------------
+-- Pestanas y tarjetas
+----------------------------------------------------------------
+local state = { tab = "emotes", cardOrder = 0, filter = "" }
+
+local statusToken = 0
+local function defaultStatus()
+	if state.tab == "emotes" then
+		return ("Saved emotes: %d  •  paste an ID or play an emote to add more"):format(#Config.emotes)
+	elseif state.tab == "bundles" then
+		return ("Saved packs: %d  •  paste a pack ID or link to add more"):format(#Config.packs)
+	elseif state.tab == "favs" then
+		return ("Favorites: %d"):format(#Config.favs)
+	end
+	return "Type an ID or link for each slot and press Enter"
+end
+local function setStatus(text) Status.Text = text or defaultStatus() end
+notify = function(text)
+	statusToken += 1
+	local t = statusToken
+	Status.Text = tostring(text)
+	task.delay(2.5, function()
+		if t == statusToken then setStatus() end
+	end)
+end
+
+local function mouseInside(obj)
+	local m = UIS:GetMouseLocation()
+	local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+	return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
+end
+
+local function createCard(item)
+	state.cardOrder += 1
+	local card = new("Frame", { BackgroundColor3 = C.card, BorderSizePixel = 0, LayoutOrder = state.cardOrder })
+	corner(card, 8)
+
+	local thumbType = item.kind == "bundle" and "BundleThumbnail" or "Asset"
+	local thumb = new("ImageButton", {
+		BackgroundColor3 = C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -50),
+		ScaleType = Enum.ScaleType.Fit, AutoButtonColor = false,
+		Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(thumbType, tostring(item.id)),
+	}, card)
+	corner(thumb, 6)
+
+	local nameBtn = makeButton({
+		Text = string.upper(item.name or "?"), TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd,
+		Position = UDim2.new(0, 6, 1, -38), Size = UDim2.new(1, -12, 0, 32), ZIndex = 2,
+	}, card)
+
+	local dark = Color3.fromRGB(20, 20, 22)
+	local idBtn = makeButton({
+		Text = "ID", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3,
+		Position = UDim2.new(1, -58, 0, 10), Size = UDim2.fromOffset(28, 20),
+	}, card)
+	local star = makeButton({
+		Text = favIndex(item) and "★" or "☆", TextSize = 14, BackgroundColor3 = dark, ZIndex = 3,
+		TextColor3 = favIndex(item) and C.gold or C.txt,
+		Position = UDim2.new(1, -28, 0, 10), Size = UDim2.fromOffset(22, 20),
+	}, card)
+	local hk = makeButton({
+		Text = "KEY", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3,
+		Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(60, 20), Visible = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, card)
+	local del = makeButton({
+		Text = "✕", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3, TextColor3 = Color3.fromRGB(255, 120, 120),
+		Position = UDim2.fromOffset(74, 10), Size = UDim2.fromOffset(22, 20), Visible = false,
+	}, card)
+
+	local hovered = false
+	local function refreshHK()
+		local e = Config.hotkeys[hkKey(item)]
+		hk.Text = e and e.key or "KEY"
+		hk.TextColor3 = e and C.gold or C.dim
+		hk.Visible = hovered or e ~= nil
+		del.Visible = hovered and state.tab ~= "favs"
+	end
+	refreshHK()
+
+	card.MouseEnter:Connect(function() hovered = true; refreshHK() end)
+	card.MouseLeave:Connect(function()
+		if mouseInside(card) then return end
+		hovered = false
+		refreshHK()
+	end)
+
+	nameBtn.MouseButton1Click:Connect(function() activate(item) end)
+	thumb.MouseButton1Click:Connect(function() activate(item) end)
+	idBtn.MouseButton1Click:Connect(function()
+		pcall(function() if setclipboard then setclipboard(tostring(item.id)) end end)
+		notify("ID copied: " .. tostring(item.id))
+	end)
+	star.MouseButton1Click:Connect(function()
+		local i = favIndex(item)
+		if i then
+			table.remove(Config.favs, i)
+		else
+			-- un favorito siempre queda tambien guardado en su pestana
+			saveItem(item, true)
+			return
+		end
+		save()
+		refreshPreviewButtons()
+		if state.tab == "favs" then
+			showTab(nil)
+		else
+			star.Text = "☆"
+			star.TextColor3 = C.txt
+		end
+	end)
+	del.MouseButton1Click:Connect(function() removeItem(item) end)
+	hk.MouseButton1Click:Connect(function()
+		hk.Text = "..."
+		hk.TextColor3 = C.white
+		capture = function(kc)
+			if kc == Enum.KeyCode.Escape then
+				Config.hotkeys[hkKey(item)] = nil
+			else
+				Config.hotkeys[hkKey(item)] = { kind = item.kind, id = item.id, name = item.name, key = kc.Name }
+			end
+			save()
+			if hk.Parent then refreshHK() end
+		end
+	end)
+
+	return card
+end
+
+local function relayout()
+	local W = Grid.AbsoluteSize.X - 8
+	local cols = math.max(1, math.floor((W + 8) / 158))
+	local cellW = math.floor((W - (cols - 1) * 8) / cols)
+	GridLayout.CellSize = UDim2.fromOffset(cellW, math.floor(cellW * 0.82) + 46)
+end
+connect(Grid:GetPropertyChangedSignal("AbsoluteSize"), relayout)
+
+local function clearCards()
+	for _, c in ipairs(Grid:GetChildren()) do
+		if c:IsA("Frame") then c:Destroy() end
+	end
+	state.cardOrder = 0
+end
+
+local function updateTabStyle()
+	for key, b in pairs(tabButtons) do
+		local on = key == state.tab
+		b.BackgroundColor3 = on and C.white or C.btn
+		b.TextColor3 = on and C.black or C.txt
+	end
+end
+
+-- showTab(nil) vuelve a dibujar la pestana actual
+showTab = function(tab)
+	local keepScroll = tab == nil
+	tab = tab or state.tab
+	if tab ~= state.tab then state.filter = ""; SearchBox.Text = "" end
+	state.tab = tab
+	updateTabStyle()
+	local isMix = tab == "mix"
+	Grid.Visible = not isMix
+	MixPage.Visible = isMix
+	SearchBox.PlaceholderText = tab == "favs" and "Name" or "Zombie, Cute"
+	IdBox.PlaceholderText = "Url or ID"
+	if isMix then
+		EmptyLabel.Visible = false
+	else
+		local pos = Grid.CanvasPosition
+		clearCards()
+		relayout()
+		local source = tab == "emotes" and Config.emotes or tab == "bundles" and Config.packs or Config.favs
+		local count = 0
+		for _, it in ipairs(source) do
+			if state.filter == "" or string.find(string.lower(it.name or ""), state.filter, 1, true) then
+				createCard(it).Parent = Grid
+				count += 1
+			end
+		end
+		if keepScroll then Grid.CanvasPosition = pos else Grid.CanvasPosition = Vector2.new(0, 0) end
+		EmptyLabel.Visible = count == 0
+		if count == 0 then
+			if state.filter ~= "" then
+				EmptyLabel.Text = "No results for that name."
+			elseif tab == "emotes" then
+				EmptyLabel.Text = "No saved emotes yet.\nPaste an emote ID or link above, or play an emote in your game and press SAVE."
+			elseif tab == "bundles" then
+				EmptyLabel.Text = "No saved packs yet.\nPaste an animation pack ID or link above and press APPLY, then SAVE."
+			else
+				EmptyLabel.Text = "No favorites yet. Press the star on any emote or pack."
+			end
+		end
+	end
+	setStatus()
+end
+
+for key, b in pairs(tabButtons) do
+	b.MouseButton1Click:Connect(function() showTab(key) end)
+end
+
+local function doSearch()
+	if state.tab == "mix" then return end
+	state.filter = string.lower(SearchBox.Text)
+	showTab(nil)
+end
+SearchBtn.MouseButton1Click:Connect(doSearch)
+SearchBox.FocusLost:Connect(function(enter) if enter then doSearch() end end)
+connect(SearchBox:GetPropertyChangedSignal("Text"), function()
+	if SearchBox.Text == "" and state.filter ~= "" then doSearch() end
+end)
+
+local function doApplyId()
+	local text = IdBox.Text
+	if text:gsub("%s", "") == "" then return end
+	notify("Looking up...")
+	task.spawn(function()
+		local item, err = identify(text, state.tab)
+		if not item then notify(err or "Invalid ID or link"); return end
+		if item.kind == "bundle" then
+			applyBundle(item, false)
+		else
+			playEmote(item.id, item.name, false)
+		end
+	end)
+end
+ApplyBtn.MouseButton1Click:Connect(doApplyId)
+IdBox.FocusLost:Connect(function(enter) if enter then doApplyId() end end)
+
+StopBtn.MouseButton1Click:Connect(function() stopEmote(); notify("Emote stopped") end)
+ResetBtn.MouseButton1Click:Connect(resetAnimations)
+
+----------------------------------------------------------------
+-- Pestana MIX
+----------------------------------------------------------------
+do
+	new("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 0, TextWrapped = true,
+		Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "Mix animations: paste an ID or catalog link for each slot and press Enter.",
+	}, MixPage)
+	local boxes = {}
+	local function applySlot(slot)
+		local id = parseId(boxes[slot].Text)
+		Config.mix[slot] = boxes[slot].Text
+		save()
+		if not id then return end
+		task.spawn(function()
+			if applySlots({ [slot] = resolveAnimId(id) }) then notify("Applied " .. slot) end
+		end)
+	end
+	for i, slot in ipairs(SLOT_ORDER) do
+		local row = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = i }, MixPage)
+		new("TextLabel", {
+			BackgroundTransparency = 1, Size = UDim2.new(0, 70, 1, 0), Text = string.upper(slot),
+			Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left,
+		}, row)
+		local box = makeBox({
+			PlaceholderText = "Url or ID", Text = Config.mix[slot] or "",
+			Position = UDim2.fromOffset(74, 0), Size = UDim2.new(1, -74, 1, 0),
+		}, row)
+		boxes[slot] = box
+		box.FocusLost:Connect(function(enter) if enter then applySlot(slot) end end)
+	end
+	local all = makeButton({
+		Text = "APPLY ALL", Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 100,
+		BackgroundColor3 = C.white, TextColor3 = C.black,
+	}, MixPage)
+	all.MouseButton1Click:Connect(function()
+		for _, slot in ipairs(SLOT_ORDER) do
+			if parseId(boxes[slot].Text) then applySlot(slot) end
+		end
+	end)
+end
+
+----------------------------------------------------------------
+-- Ventana de ajustes (aparte)
+----------------------------------------------------------------
+local Settings = new("Frame", {
+	Name = "Settings", BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false,
+	Size = UDim2.fromOffset(270, 436), Position = UDim2.new(0.5, 320, 0.5, -218),
+}, gui)
+corner(Settings, 10)
+new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, Settings)
+
+local sTitle = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38) }, Settings)
+new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -60, 1, 0), Text = "SETTINGS",
+	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left,
+}, sTitle)
+local sClose = makeButton({ Text = "X", Size = UDim2.fromOffset(26, 24), Position = UDim2.new(1, -36, 0, 7) }, sTitle)
+draggable(sTitle, Settings)
+
+new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 42), Size = UDim2.fromOffset(150, 20), Text = "ANIMATION SPEED",
+	Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+}, Settings)
+local speedLabel = new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.new(1, -94, 0, 42), Size = UDim2.fromOffset(80, 20), Text = "1.00x",
+	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Right,
+}, Settings)
+
+local track = new("Frame", {
+	BackgroundColor3 = C.btn, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 74), Size = UDim2.new(1, -28, 0, 6),
+}, Settings)
+corner(track, 3)
+local fill = new("Frame", { BackgroundColor3 = C.white, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, track)
+corner(fill, 3)
+local knob = new("Frame", {
+	BackgroundColor3 = C.white, BorderSizePixel = 0, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0, 0.5), ZIndex = 2,
+}, track)
+corner(knob, 8)
+local hit = new("TextButton", { BackgroundTransparency = 1, Text = "", Position = UDim2.fromOffset(14, 62), Size = UDim2.new(1, -28, 0, 30), ZIndex = 3 }, Settings)
+
+local MIN_S, MAX_S = 0.10, 3.00
+local presetBtns = {}
+local function refreshSpeedUI()
+	local v = Config.speed
+	local r = (v - MIN_S) / (MAX_S - MIN_S)
+	fill.Size = UDim2.fromScale(r, 1)
+	knob.Position = UDim2.fromScale(r, 0.5)
+	speedLabel.Text = ("%.2fx"):format(v)
+	for val, b in pairs(presetBtns) do
+		local on = math.abs(val - v) < 0.005
+		b.BackgroundColor3 = on and C.white or C.btn
+		b.TextColor3 = on and C.black or C.txt
+	end
+end
+local function setSpeed(v)
+	v = math.clamp(math.floor(v * 100 + 0.5) / 100, MIN_S, MAX_S)
+	Config.speed = v
+	refreshSpeedUI()
+	save()
+end
+
+local sliding = false
+local function slideTo(x)
+	local r = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+	setSpeed(MIN_S + r * (MAX_S - MIN_S))
+end
+connect(hit.InputBegan, function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		sliding = true
+		slideTo(i.Position.X)
+	end
+end)
+connect(UIS.InputChanged, function(i)
+	if sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+		slideTo(i.Position.X)
+	end
+end)
+connect(UIS.InputEnded, function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then sliding = false end
+end)
+
+local presetFrame = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 100), Size = UDim2.new(1, -28, 0, 174) }, Settings)
+new("UIGridLayout", {
+	CellSize = UDim2.new(0.5, -4, 0, 30), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+}, presetFrame)
+for i, v in ipairs({ 0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00 }) do
+	local b = makeButton({ Text = ("%.2fx"):format(v), LayoutOrder = i }, presetFrame)
+	presetBtns[v] = b
+	b.MouseButton1Click:Connect(function() setSpeed(v) end)
+end
+
+local function toggleButton(y, label, getter, setter)
+	local b = makeButton({ Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12 }, Settings)
+	local function refresh()
+		local on = getter()
+		b.Text = label .. ": " .. (on and "ON" or "OFF")
+		b.BackgroundColor3 = on and C.white or C.btn
+		b.TextColor3 = on and C.black or C.txt
+	end
+	b.MouseButton1Click:Connect(function()
+		setter(not getter())
+		refresh()
+		save()
+	end)
+	refresh()
+end
+toggleButton(288, "Keep emote while moving", function() return Config.keepEmote end, function(v) Config.keepEmote = v end)
+toggleButton(332, "Detect game emotes", function() return Config.detect end, function(v) Config.detect = v end)
+
+local keyBtn = makeButton({
+	Position = UDim2.fromOffset(14, 376), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12,
+}, Settings)
+local function refreshKey() keyBtn.Text = "Menu key: " .. Config.menuKey end
+keyBtn.MouseButton1Click:Connect(function()
+	keyBtn.Text = "Press a key..."
+	capture = function(kc)
+		if kc ~= Enum.KeyCode.Escape then
+			Config.menuKey = kc.Name
+			save()
+		end
+		refreshKey()
+	end
+end)
+
+refreshSpeedUI()
+refreshKey()
+
+GearBtn.MouseButton1Click:Connect(function() Settings.Visible = not Settings.Visible end)
+sClose.MouseButton1Click:Connect(function() Settings.Visible = false end)
+
+----------------------------------------------------------------
+-- Mini ventana "SAVE" (emote o pack detectado / pegado)
+----------------------------------------------------------------
+local Preview = new("Frame", {
+	Name = "Preview", BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false,
+	Size = UDim2.fromOffset(290, 152), Position = UDim2.new(0.5, -145, 1, -190),
+}, gui)
+corner(Preview, 10)
+new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, Preview)
+
+local pBar = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30) }, Preview)
+local pHead = new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -50, 1, 0), Text = "",
+	Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.gold, TextXAlignment = Enum.TextXAlignment.Left,
+}, pBar)
+local pClose = makeButton({ Text = "✕", Size = UDim2.fromOffset(24, 22), Position = UDim2.new(1, -32, 0, 4) }, pBar)
+draggable(pBar, Preview)
+
+local pThumb = new("ImageLabel", {
+	BackgroundColor3 = C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 36), Size = UDim2.fromOffset(64, 64),
+	ScaleType = Enum.ScaleType.Fit,
+}, Preview)
+corner(pThumb, 6)
+local pName = makeBox({
+	PlaceholderText = "Name", Text = "", Position = UDim2.fromOffset(86, 36), Size = UDim2.new(1, -98, 0, 28),
+}, Preview)
+local pInfo = new("TextLabel", {
+	BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 68), Size = UDim2.new(1, -98, 0, 34), Text = "",
+	Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+}, Preview)
+local pFav = makeButton({ Text = "☆ Favorite", Position = UDim2.fromOffset(12, 110), Size = UDim2.fromOffset(120, 30) }, Preview)
+local pSave = makeButton({
+	Text = "SAVE", Position = UDim2.fromOffset(142, 110), Size = UDim2.new(1, -154, 0, 30),
+	BackgroundColor3 = C.white, TextColor3 = C.black,
+}, Preview)
+
+local previewItem = nil
+local previewToken = 0
+
+refreshPreviewButtons = function()
+	if not previewItem then return end
+	local saved = libIndex(previewItem) ~= nil
+	local fav = favIndex(previewItem) ~= nil
+	pSave.Text = saved and "SAVED ✓" or "SAVE"
+	pSave.BackgroundColor3 = saved and C.btn or C.white
+	pSave.TextColor3 = saved and C.txt or C.black
+	pFav.Text = fav and "★ Favorite" or "☆ Favorite"
+	pFav.TextColor3 = fav and C.gold or C.txt
+end
+
+local function currentPreviewName()
+	local nm = (pName.Text:gsub("^%s+", ""))
+	nm = (nm:gsub("%s+$", ""))
+	if nm == "" then nm = previewItem.name end
+	previewItem.name = nm
+	return nm
+end
+
+showPreview = function(item, header, extra, autoHide)
+	previewItem = { kind = item.kind, id = tostring(item.id), name = item.name, img = item.img }
+	previewToken += 1
+	local tk = previewToken
+	pHead.Text = header
+	pName.Text = item.name or ""
+	pInfo.Text = "ID: " .. tostring(item.id) .. ((extra and extra ~= "") and ("\n" .. extra) or "")
+	pThumb.Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(item.kind == "bundle" and "BundleThumbnail" or "Asset", tostring(item.id))
+	Preview.Visible = true
+	refreshPreviewButtons()
+	if autoHide then
+		task.delay(autoHide, function()
+			if tk == previewToken then Preview.Visible = false end
+		end)
+	end
+end
+
+pClose.MouseButton1Click:Connect(function() Preview.Visible = false; previewToken += 1 end)
+pSave.MouseButton1Click:Connect(function()
+	if not previewItem or libIndex(previewItem) then return end
+	previewToken += 1 -- cancela el cierre automatico
+	currentPreviewName()
+	saveItem(previewItem, false)
+	notify("Saved: " .. previewItem.name)
+	Preview.Visible = false
+end)
+pFav.MouseButton1Click:Connect(function()
+	if not previewItem then return end
+	previewToken += 1
+	local fi = favIndex(previewItem)
+	if fi then
+		table.remove(Config.favs, fi)
+		save()
+		refreshPreviewButtons()
+		if state.tab == "favs" then showTab(nil) end
+	else
+		currentPreviewName()
+		saveItem(previewItem, true)
+		notify("Saved to favorites: " .. previewItem.name)
+		Preview.Visible = false
+	end
+end)
+pName.FocusLost:Connect(function()
+	if not previewItem then return end
+	previewToken += 1
+	local nm = currentPreviewName()
+	local i = libIndex(previewItem)
+	if i then libList(previewItem.kind)[i].name = nm end
+	local fi = favIndex(previewItem)
+	if fi then Config.favs[fi].name = nm end
+	if i or fi then
+		save()
+		showTab(nil)
+	end
+end)
+
+----------------------------------------------------------------
+-- Minimizar / cerrar / redimensionar
+----------------------------------------------------------------
+MinBtn.MouseButton1Click:Connect(function() Main.Visible = false end)
+
+local function unload()
+	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+	conns = {}
+	pcall(resetAnimations)
+	pcall(function() gui:Destroy() end)
+	if getgenv then getgenv().__BA_UNLOAD = nil end
+end
+if getgenv then getgenv().__BA_UNLOAD = unload end
+CloseBtn.MouseButton1Click:Connect(unload)
+
+do
+	local resizing, startMouse, startSize = false, nil, nil
+	connect(Grip.InputBegan, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			resizing = true
+			startMouse = i.Position
+			startSize = Main.AbsoluteSize
+		end
+	end)
+	connect(UIS.InputChanged, function(i)
+		if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - startMouse
+			local w = math.clamp(startSize.X + d.X, 440, 1000)
+			local h = math.clamp(startSize.Y + d.Y, 320, 800)
+			Main.Size = UDim2.fromOffset(w, h)
+		end
+	end)
+	connect(UIS.InputEnded, function(i)
+		if resizing and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+			resizing = false
+			Config.w, Config.h = math.floor(Main.AbsoluteSize.X), math.floor(Main.AbsoluteSize.Y)
+			save()
+		end
+	end)
+end
+
+----------------------------------------------------------------
+-- Teclado: captura, tecla del menu y atajos
+----------------------------------------------------------------
+connect(UIS.InputBegan, function(input, processed)
+	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+	if capture then
+		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			local f = capture
+			capture = nil
+			f(input.KeyCode)
+		end
+		return
+	end
+	if processed then return end
+	local name = input.KeyCode.Name
+	if name == Config.menuKey then
+		Main.Visible = not Main.Visible
+		return
+	end
+	for _, e in pairs(Config.hotkeys) do
+		if e.key == name then
+			activate(e)
+			break
+		end
+	end
+end)
+
+----------------------------------------------------------------
+-- Inicio
+----------------------------------------------------------------
+showTab("emotes")
+notify("Loaded. Menu key: " .. Config.menuKey)
