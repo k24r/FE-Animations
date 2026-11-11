@@ -1,3 +1,5 @@
+-- Shared state table keeps the main chunk below Luau's 200-local register limit.
+local __BA_STATE = {}
 --[[
 	Bundle Animations v2 - sin catalogo
 	- Pega un ID/URL (emote o pack) o haz un emote en tu juego: el menu lo detecta
@@ -9,14 +11,14 @@
 	- Todo se guarda con writefile/readfile en BundleAnimations/config.json
 ]]
 
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
-local AssetService = game:GetService("AssetService")
-local MarketplaceService = game:GetService("MarketplaceService")
+__BA_STATE.Players = game:GetService("Players")
+__BA_STATE.UIS = game:GetService("UserInputService")
+__BA_STATE.RunService = game:GetService("RunService")
+__BA_STATE.HttpService = game:GetService("HttpService")
+__BA_STATE.AssetService = game:GetService("AssetService")
+__BA_STATE.MarketplaceService = game:GetService("MarketplaceService")
 
-local LP = Players.LocalPlayer
+__BA_STATE.LP = __BA_STATE.Players.LocalPlayer
 
 if getgenv then
 	pcall(function()
@@ -27,26 +29,26 @@ end
 ----------------------------------------------------------------
 -- Utilidades
 ----------------------------------------------------------------
-local conns = {}
-local function connect(signal, fn)
+__BA_STATE.conns = {}
+function __BA_STATE.connect(signal, fn)
 	local c = signal:Connect(fn)
-	table.insert(conns, c)
+	table.insert(__BA_STATE.conns, c)
 	return c
 end
 
-local function new(class, props, parent)
+function __BA_STATE.new(class, props, parent)
 	local o = Instance.new(class)
 	for k, v in pairs(props or {}) do o[k] = v end
 	if parent then o.Parent = parent end
 	return o
 end
 
-local function corner(o, r)
-	new("UICorner", { CornerRadius = UDim.new(0, r or 6) }, o)
+function __BA_STATE.corner(o, r)
+	__BA_STATE.new("UICorner", { CornerRadius = UDim.new(0, r or 6) }, o)
 	return o
 end
 
-local C = {
+__BA_STATE.C = {
 	bg = Color3.fromRGB(14, 14, 16),
 	panel = Color3.fromRGB(24, 24, 27),
 	card = Color3.fromRGB(30, 30, 34),
@@ -62,10 +64,10 @@ local C = {
 ----------------------------------------------------------------
 -- Configuracion guardada
 ----------------------------------------------------------------
-local DIR = "BundleAnimations"
-local FILE = DIR .. "/config.json"
+__BA_STATE.DIR = "BundleAnimations"
+__BA_STATE.FILE = __BA_STATE.DIR .. "/config.json"
 
-local Config = {
+__BA_STATE.Config = {
 	menuKey = "RightControl",
 	speed = 1,
 	keepEmote = false,
@@ -85,23 +87,23 @@ local Config = {
 }
 
 pcall(function()
-	if makefolder and isfolder and not isfolder(DIR) then makefolder(DIR) end
-	if isfile and readfile and isfile(FILE) then
-		local data = HttpService:JSONDecode(readfile(FILE))
+	if makefolder and isfolder and not isfolder(__BA_STATE.DIR) then makefolder(__BA_STATE.DIR) end
+	if isfile and readfile and isfile(__BA_STATE.FILE) then
+		local data = __BA_STATE.HttpService:JSONDecode(readfile(__BA_STATE.FILE))
 		for k, v in pairs(data) do
-			if type(Config[k]) == type(v) then Config[k] = v end
+			if type(__BA_STATE.Config[k]) == type(v) then __BA_STATE.Config[k] = v end
 		end
 	end
 end)
 
-local saveToken = 0
-local function save()
-	saveToken += 1
-	local t = saveToken
+__BA_STATE.saveToken = 0
+function __BA_STATE.save()
+	__BA_STATE.saveToken += 1
+	local t = __BA_STATE.saveToken
 	task.delay(0.4, function()
-		if t ~= saveToken then return end
+		if t ~= __BA_STATE.saveToken then return end
 		pcall(function()
-			if writefile then writefile(FILE, HttpService:JSONEncode(Config)) end
+			if writefile then writefile(__BA_STATE.FILE, __BA_STATE.HttpService:JSONEncode(__BA_STATE.Config)) end
 		end)
 	end)
 end
@@ -109,10 +111,10 @@ end
 ----------------------------------------------------------------
 -- Informacion de assets y packs (sin catalogo web)
 ----------------------------------------------------------------
-local animCache = {}
-local function resolveAnimId(assetId)
+__BA_STATE.animCache = {}
+function __BA_STATE.resolveAnimId(assetId)
 	assetId = tostring(assetId)
-	if animCache[assetId] then return animCache[assetId] end
+	if __BA_STATE.animCache[assetId] then return __BA_STATE.animCache[assetId] end
 	local result = "rbxassetid://" .. assetId
 	pcall(function()
 		local objs = game:GetObjects("rbxassetid://" .. assetId)
@@ -126,11 +128,11 @@ local function resolveAnimId(assetId)
 			end
 		end
 	end)
-	animCache[assetId] = result
+	__BA_STATE.animCache[assetId] = result
 	return result
 end
 
-local function parseId(text)
+function __BA_STATE.parseId(text)
 	text = tostring(text or "")
 	local b = text:match("/bundles/(%d+)")
 	if b then return b, true end
@@ -138,47 +140,47 @@ local function parseId(text)
 	return id, false
 end
 
-local function normId(s)
+function __BA_STATE.normId(s)
 	return s and tostring(s):match("%d+")
 end
 
-local function assetInfo(id)
+function __BA_STATE.assetInfo(id)
 	local ok, info = pcall(function()
-		return MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Asset)
+		return __BA_STATE.MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Asset)
 	end)
 	if ok and type(info) == "table" then return info end
 end
 
-local function bundleInfo(id)
-	local ok, d = pcall(function() return AssetService:GetBundleDetailsAsync(tonumber(id)) end)
+function __BA_STATE.bundleInfo(id)
+	local ok, d = pcall(function() return __BA_STATE.AssetService:GetBundleDetailsAsync(tonumber(id)) end)
 	if ok and type(d) == "table" and d.Items then return d end
 	local ok2, d2 = pcall(function()
-		return MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Bundle)
+		return __BA_STATE.MarketplaceService:GetProductInfo(tonumber(id), Enum.InfoType.Bundle)
 	end)
 	if ok2 and type(d2) == "table" and d2.Items then return d2 end
 end
 
-local ANIM_TYPES = { [24] = true, [61] = true }
-for t = 48, 56 do ANIM_TYPES[t] = true end
+__BA_STATE.ANIM_TYPES = { [24] = true, [61] = true }
+for t = 48, 56 do __BA_STATE.ANIM_TYPES[t] = true end
 
 -- Decide si lo pegado es un emote o un pack de animaciones
-local function identify(text, tabHint)
-	local id, urlBundle = parseId(text)
+function __BA_STATE.identify(text, tabHint)
+	local id, urlBundle = __BA_STATE.parseId(text)
 	if not id then return nil, "Invalid ID or link" end
 	if urlBundle then
-		local b = bundleInfo(id)
+		local b = __BA_STATE.bundleInfo(id)
 		if b then return { kind = "bundle", id = id, name = b.Name or ("Pack " .. id), info = b } end
 		return nil, "Pack not found"
 	end
 	local catalogUrl = tostring(text):find("/catalog/", 1, true) ~= nil
 	local function tryBundle()
-		local b = bundleInfo(id)
+		local b = __BA_STATE.bundleInfo(id)
 		if b then return { kind = "bundle", id = id, name = b.Name or ("Pack " .. id), info = b } end
 	end
 	local function tryAsset()
-		local a = assetInfo(id)
+		local a = __BA_STATE.assetInfo(id)
 		if a then
-			if a.AssetTypeId and not ANIM_TYPES[a.AssetTypeId] then return nil, "That ID is not an animation" end
+			if a.AssetTypeId and not __BA_STATE.ANIM_TYPES[a.AssetTypeId] then return nil, "That ID is not an animation" end
 			return { kind = "emote", id = id, name = a.Name or ("Emote " .. id) }
 		end
 	end
@@ -201,29 +203,29 @@ end
 ----------------------------------------------------------------
 -- Personaje / animaciones
 ----------------------------------------------------------------
-local Char, Hum, Animator
-local function refreshChar()
-	Char = LP.Character
-	Hum = Char and Char:FindFirstChildOfClass("Humanoid")
-	Animator = Hum and Hum:FindFirstChildWhichIsA("Animator", true)
-	return Animator ~= nil
+__BA_STATE.Char, __BA_STATE.Hum, __BA_STATE.Animator = nil
+function __BA_STATE.refreshChar()
+	__BA_STATE.Char = __BA_STATE.LP.Character
+	__BA_STATE.Hum = __BA_STATE.Char and __BA_STATE.Char:FindFirstChildOfClass("Humanoid")
+	__BA_STATE.Animator = __BA_STATE.Hum and __BA_STATE.Hum:FindFirstChildWhichIsA("Animator", true)
+	return __BA_STATE.Animator ~= nil
 end
-refreshChar()
+__BA_STATE.refreshChar()
 
-local notify, showPreview, showTab, refreshPreviewButtons -- se definen mas abajo
+__BA_STATE.notify, __BA_STATE.showPreview, __BA_STATE.showTab, __BA_STATE.refreshPreviewButtons = nil -- se definen mas abajo
 
-local ourTracks = setmetatable({}, { __mode = "k" }) -- tracks creados por este script
-local emote = { track = nil, id = nil, token = 0, startedAt = 0 }
-local clickImg = { image = nil, t = 0 } -- ultima imagen clickeada en la GUI del juego
+__BA_STATE.ourTracks = setmetatable({}, { __mode = "k" })  -- tracks creados por este script
+__BA_STATE.emote = { __BA_STATE.track = nil, id = nil, token = 0, startedAt = 0 }
+__BA_STATE.clickImg = { image = nil, t = 0 }  -- ultima imagen clickeada en la GUI del juego
 
 -- IDs de animacion que usa el script Animate (idle, walk, run...)
-local function animateIdSet()
+function __BA_STATE.animateIdSet()
 	local set = {}
-	local an = Char and Char:FindFirstChild("Animate")
+	local an = __BA_STATE.Char and __BA_STATE.Char:FindFirstChild("Animate")
 	if an then
 		for _, d in ipairs(an:GetDescendants()) do
 			if d:IsA("Animation") then
-				local n = normId(d.AnimationId)
+				local n = __BA_STATE.normId(d.AnimationId)
 				if n then set[n] = true end
 			end
 		end
@@ -232,50 +234,50 @@ local function animateIdSet()
 end
 
 -- Un "emote del juego" = animacion de prioridad Action que no viene de Animate
-local function isGameEmoteTrack(t, set)
+function __BA_STATE.isGameEmoteTrack(t, set)
 	local pr = t.Priority.Value
 	if pr < 2 or pr > 5 then return false end
 	local anim = t.Animation
-	local id = anim and normId(anim.AnimationId)
+	local id = anim and __BA_STATE.normId(anim.AnimationId)
 	return id ~= nil and not set[id]
 end
 
-local function stopGameEmotes()
-	if not Animator then return end
-	local set = animateIdSet()
-	for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
-		if not ourTracks[t] and isGameEmoteTrack(t, set) then
+function __BA_STATE.stopGameEmotes()
+	if not __BA_STATE.Animator then return end
+	local set = __BA_STATE.animateIdSet()
+	for _, t in ipairs(__BA_STATE.Animator:GetPlayingAnimationTracks()) do
+		if not __BA_STATE.ourTracks[t] and __BA_STATE.isGameEmoteTrack(t, set) then
 			pcall(function() t:Stop(0.1) end)
 		end
 	end
 end
 
-local function stopEmote(fade)
-	emote.token += 1
-	if emote.track then
-		pcall(function() emote.track:Stop(fade or 0.2) end)
+function __BA_STATE.stopEmote(fade)
+	__BA_STATE.emote.token += 1
+	if __BA_STATE.emote.track then
+		pcall(function() __BA_STATE.emote.track:Stop(fade or 0.2) end)
 	end
-	emote.track = nil
-	emote.id = nil
+	__BA_STATE.emote.track = nil
+	__BA_STATE.emote.id = nil
 end
 
 -- Reproduce un emote.
 -- Si presionas el mismo emote mientras está reproduciéndose, lo detiene.
 -- Si eliges otro emote, detiene el anterior y reproduce el nuevo.
-local function playEmote(id, name, silent, img)
+function __BA_STATE.playEmote(id, name, silent, img)
 	id = tostring(id)
 
-	if not refreshChar() then
-		notify("No character / Animator found")
+	if not __BA_STATE.refreshChar() then
+		__BA_STATE.notify("No character / Animator found")
 		return
 	end
 
 	-- Si este mismo emote ya está reproduciéndose, detenerlo.
-	if emote.id == id and emote.track and emote.track.IsPlaying then
-		stopEmote(0.2)
+	if __BA_STATE.emote.id == id and __BA_STATE.emote.track and __BA_STATE.emote.track.IsPlaying then
+		__BA_STATE.stopEmote(0.2)
 
 		if not silent then
-			notify("Emote stopped: " .. tostring(name))
+			__BA_STATE.notify("Emote stopped: " .. tostring(name))
 		end
 
 		return
@@ -283,38 +285,38 @@ local function playEmote(id, name, silent, img)
 
 	-- Si es otro emote, detener el anterior antes de reproducir el nuevo.
 	stopEmote(0)
-	stopGameEmotes()
-	local token = emote.token
-	emote.id = id
+	__BA_STATE.stopGameEmotes()
+	local token = __BA_STATE.emote.token
+	__BA_STATE.emote.id = id
 	task.spawn(function()
-		local animId = resolveAnimId(id)
-		if token ~= emote.token then return end
+		local animId = __BA_STATE.resolveAnimId(id)
+		if token ~= __BA_STATE.emote.token then return end
 		local a = Instance.new("Animation")
 		a.AnimationId = animId
-		local ok, track = pcall(function() return Animator:LoadAnimation(a) end)
-		if not ok or not track then
-			emote.id = nil
-			notify("Could not load emote")
+		local ok, __BA_STATE.track = pcall(function() return __BA_STATE.Animator:LoadAnimation(a) end)
+		if not ok or not __BA_STATE.track then
+			__BA_STATE.emote.id = nil
+			__BA_STATE.notify("Could not load emote")
 			return
 		end
-		ourTracks[track] = true
-		track.Priority = Enum.AnimationPriority.Action4
-		track:Play(0.1, 1, Config.speed)
-		track.TimePosition = 0
-		emote.track = track
-		emote.startedAt = os.clock()
-		track.Stopped:Connect(function()
-			if emote.track == track then emote.track = nil; emote.id = nil end
+		__BA_STATE.ourTracks[__BA_STATE.track] = true
+		__BA_STATE.track.Priority = Enum.AnimationPriority.Action4
+		__BA_STATE.track:Play(0.1, 1, __BA_STATE.Config.speed)
+		__BA_STATE.track.TimePosition = 0
+		__BA_STATE.emote.track = __BA_STATE.track
+		__BA_STATE.emote.startedAt = os.clock()
+		__BA_STATE.track.Stopped:Connect(function()
+			if __BA_STATE.emote.track == __BA_STATE.track then __BA_STATE.emote.track = nil; __BA_STATE.emote.id = nil end
 		end)
-		notify("Emote: " .. tostring(name))
+		__BA_STATE.notify("Emote: " .. tostring(name))
 		if not silent then
-			showPreview({ kind = "emote", id = id, name = name, img = img }, "NOW PLAYING")
+			__BA_STATE.showPreview({ kind = "emote", id = id, name = name, img = img }, "NOW PLAYING")
 		end
 	end)
 end
 
-local SLOT_ORDER = { "idle", "walk", "run", "jump", "fall", "climb", "swim" }
-local SLOT_PATHS = {
+__BA_STATE.SLOT_ORDER = { "idle", "walk", "run", "jump", "fall", "climb", "swim" }
+__BA_STATE.SLOT_PATHS = {
 	idle = { { "idle", "Animation1" }, { "idle", "Animation2" } },
 	walk = { { "walk", "WalkAnim" } },
 	run = { { "run", "RunAnim" } },
@@ -324,62 +326,62 @@ local SLOT_PATHS = {
 	swim = { { "swim", "Swim" } },
 }
 
-local original = {}
-local currentSlots = {}
+__BA_STATE.original = {}
+__BA_STATE.currentSlots = {}
 
-local function setAnimateDisabled(animate, v)
+function __BA_STATE.setAnimateDisabled(animate, v)
 	pcall(function() animate.Disabled = v end)
 	pcall(function() animate.Enabled = not v end)
 end
 
-local function writeSlots(animate)
-	for slot, id in pairs(currentSlots) do
-		for _, p in ipairs(SLOT_PATHS[slot] or {}) do
+function __BA_STATE.writeSlots(animate)
+	for slot, id in pairs(__BA_STATE.currentSlots) do
+		for _, p in ipairs(__BA_STATE.SLOT_PATHS[slot] or {}) do
 			local f = animate:FindFirstChild(p[1])
 			local v = f and f:FindFirstChild(p[2])
 			if v then
 				local key = p[1] .. "." .. p[2]
-				if original[key] == nil then original[key] = v.AnimationId end
+				if __BA_STATE.original[key] == nil then __BA_STATE.original[key] = v.AnimationId end
 				v.AnimationId = id
 			end
 		end
 	end
 end
 
-local function restartAnimate(animate)
-	setAnimateDisabled(animate, true)
-	if Animator then
-		for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
-			if t ~= emote.track then pcall(function() t:Stop(0) end) end
+function __BA_STATE.restartAnimate(animate)
+	__BA_STATE.setAnimateDisabled(animate, true)
+	if __BA_STATE.Animator then
+		for _, t in ipairs(__BA_STATE.Animator:GetPlayingAnimationTracks()) do
+			if t ~= __BA_STATE.emote.track then pcall(function() t:Stop(0) end) end
 		end
 	end
 	task.wait()
-	setAnimateDisabled(animate, false)
+	__BA_STATE.setAnimateDisabled(animate, false)
 end
 
-local function applySlots(slots)
-	refreshChar()
-	local animate = Char and Char:FindFirstChild("Animate")
+function __BA_STATE.applySlots(slots)
+	__BA_STATE.refreshChar()
+	local animate = __BA_STATE.Char and __BA_STATE.Char:FindFirstChild("Animate")
 	if not animate then
-		notify("No 'Animate' script found in your character")
+		__BA_STATE.notify("No 'Animate' script found in your character")
 		return false
 	end
-	for s, id in pairs(slots) do currentSlots[s] = id end
-	writeSlots(animate)
-	restartAnimate(animate)
+	for s, id in pairs(slots) do __BA_STATE.currentSlots[s] = id end
+	__BA_STATE.writeSlots(animate)
+	__BA_STATE.restartAnimate(animate)
 	return true
 end
 
-local function slotsFromInfo(info)
+function __BA_STATE.slotsFromInfo(info)
 	local slots = {}
 	for _, it in ipairs(info.Items or {}) do
 		local iid = it.Id or it.id
 		local itype = it.Type or it.type
 		if itype == "Asset" and iid then
 			local n = string.lower(it.Name or it.name or "")
-			for _, s in ipairs(SLOT_ORDER) do
+			for _, s in ipairs(__BA_STATE.SLOT_ORDER) do
 				if n:find(s, 1, true) then
-					if not slots[s] then slots[s] = resolveAnimId(iid) end
+					if not slots[s] then slots[s] = __BA_STATE.resolveAnimId(iid) end
 					break
 				end
 			end
@@ -388,81 +390,81 @@ local function slotsFromInfo(info)
 	return slots
 end
 
-local function applyBundle(item, silent)
+function __BA_STATE.applyBundle(item, silent)
 	task.spawn(function()
-		notify("Applying pack...")
-		local info = item.info or bundleInfo(item.id)
+		__BA_STATE.notify("Applying pack...")
+		local info = item.info or __BA_STATE.bundleInfo(item.id)
 		if not info then
-			notify("Could not read pack " .. tostring(item.id))
+			__BA_STATE.notify("Could not read pack " .. tostring(item.id))
 			return
 		end
-		local slots = slotsFromInfo(info)
+		local slots = __BA_STATE.slotsFromInfo(info)
 		if next(slots) == nil then
-			notify("That pack has no walk/run/idle animations")
+			__BA_STATE.notify("That pack has no walk/run/idle animations")
 			return
 		end
-		if applySlots(slots) then
-			notify("Pack: " .. tostring(item.name))
+		if __BA_STATE.applySlots(slots) then
+			__BA_STATE.notify("Pack: " .. tostring(item.name))
 			if not silent then
 				local names = {}
-				for _, s in ipairs(SLOT_ORDER) do
+				for _, s in ipairs(__BA_STATE.SLOT_ORDER) do
 					if slots[s] then table.insert(names, s) end
 				end
-				showPreview({ kind = "bundle", id = tostring(item.id), name = item.name }, "PACK APPLIED", table.concat(names, ", "))
+				__BA_STATE.showPreview({ kind = "bundle", id = tostring(item.id), name = item.name }, "PACK APPLIED", table.concat(names, ", "))
 			end
 		end
 	end)
 end
 
-local function resetAnimations()
-	stopEmote()
-	refreshChar()
-	local animate = Char and Char:FindFirstChild("Animate")
-	currentSlots = {}
+function __BA_STATE.resetAnimations()
+	__BA_STATE.stopEmote()
+	__BA_STATE.refreshChar()
+	local animate = __BA_STATE.Char and __BA_STATE.Char:FindFirstChild("Animate")
+	__BA_STATE.currentSlots = {}
 	if animate then
-		for key, id in pairs(original) do
+		for key, id in pairs(__BA_STATE.original) do
 			local f, n = key:match("([^.]+)%.(.+)")
 			local folder = f and animate:FindFirstChild(f)
 			local v = folder and folder:FindFirstChild(n)
 			if v then v.AnimationId = id end
 		end
-		original = {}
-		task.spawn(restartAnimate, animate)
+		__BA_STATE.original = {}
+		task.spawn(__BA_STATE.restartAnimate, animate)
 	end
-	notify("Animations reset")
+	__BA_STATE.notify("Animations reset")
 end
 
-connect(LP.CharacterAdded, function(c)
-	original = {}
-	emote.track = nil
-	emote.id = nil
+__BA_STATE.connect(__BA_STATE.LP.CharacterAdded, function(c)
+	__BA_STATE.original = {}
+	__BA_STATE.emote.track = nil
+	__BA_STATE.emote.id = nil
 	task.spawn(function()
 		c:WaitForChild("Humanoid", 10)
 		c:WaitForChild("Animate", 10)
 		task.wait(0.6)
-		refreshChar()
-		if next(currentSlots) then applySlots({}) end
+		__BA_STATE.refreshChar()
+		if next(__BA_STATE.currentSlots) then __BA_STATE.applySlots({}) end
 	end)
 end)
 
 ----------------------------------------------------------------
 -- Biblioteca (guardados) y favoritos
 ----------------------------------------------------------------
-local function libList(kind) return kind == "bundle" and Config.packs or Config.emotes end
-local function libIndex(item)
-	for i, v in ipairs(libList(item.kind)) do
+function __BA_STATE.libList(kind) return kind == "bundle" and Config.packs or Config.emotes end
+function __BA_STATE.libIndex(item)
+	for i, v in ipairs(__BA_STATE.libList(item.kind)) do
 		if tostring(v.id) == tostring(item.id) then return i end
 	end
 end
-local function favIndex(item)
-	for i, f in ipairs(Config.favs) do
+function __BA_STATE.favIndex(item)
+	for i, f in ipairs(__BA_STATE.Config.favs) do
 		if f.kind == item.kind and tostring(f.id) == tostring(item.id) then return i end
 	end
 end
-local function hkKey(item) return item.kind .. ":" .. tostring(item.id) end
+function __BA_STATE.hkKey(item) return item.kind .. ":" .. tostring(item.id) end
 
 -- Copia independiente de los atajos para que cada perfil tenga su propio mapa.
-local function copyHotkeys(source)
+function __BA_STATE.copyHotkeys(source)
 	local result = {}
 	for key, value in pairs(source or {}) do
 		if type(value) == "table" then
@@ -477,157 +479,157 @@ local function copyHotkeys(source)
 	return result
 end
 
-local function findProfile(name)
+function __BA_STATE.findProfile(name)
 	local wanted = string.lower((tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")))
-	for index, profile in ipairs(Config.profiles) do
+	for index, profile in ipairs(__BA_STATE.Config.profiles) do
 		if string.lower(profile.name or "") == wanted then
 			return index, profile
 		end
 	end
 end
 
-local function collectionProfiles(kind)
-	return kind == "bundle" and Config.packProfiles or Config.emoteProfiles
+function __BA_STATE.collectionProfiles(kind)
+	return kind == "bundle" and __BA_STATE.Config.packProfiles or __BA_STATE.Config.emoteProfiles
 end
 
-local function findCollectionFolder(kind, name)
+function __BA_STATE.findCollectionFolder(kind, name)
 	local wanted = string.lower((tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")))
-	for index, folder in ipairs(collectionProfiles(kind)) do
+	for index, folder in ipairs(__BA_STATE.collectionProfiles(kind)) do
 		if string.lower(folder.name or "") == wanted then return index, folder end
 	end
 end
 
-local function addItemToCollection(kind, folderName, item)
-	local _, folder = findCollectionFolder(kind, folderName)
+function __BA_STATE.addItemToCollection(kind, folderName, item)
+	local _, folder = __BA_STATE.findCollectionFolder(kind, folderName)
 	if not folder then return false end
 	folder.items = folder.items or {}
 	for _, saved in ipairs(folder.items) do
 		if tostring(saved.id) == tostring(item.id) then return true end
 	end
 	table.insert(folder.items, { kind = kind, id = tostring(item.id), name = item.name or ((kind == "bundle" and "Pack " or "Emote ") .. tostring(item.id)), img = item.img })
-	save()
+	__BA_STATE.save()
 	return true
 end
 
-local function copyMixSlots(source)
+function __BA_STATE.copyMixSlots(source)
 	local result = {}
-	for _, slot in ipairs(SLOT_ORDER) do
+	for _, slot in ipairs(__BA_STATE.SLOT_ORDER) do
 		if source and source[slot] and tostring(source[slot]) ~= "" then result[slot] = tostring(source[slot]) end
 	end
 	return result
 end
 
-local function syncActiveProfile()
-	if Config.activeProfile == "" then return end
-	local _, profile = findProfile(Config.activeProfile)
+function __BA_STATE.syncActiveProfile()
+	if __BA_STATE.Config.activeProfile == "" then return end
+	local _, profile = __BA_STATE.findProfile(__BA_STATE.Config.activeProfile)
 	if profile then
-		profile.hotkeys = copyHotkeys(Config.hotkeys)
+		profile.hotkeys = __BA_STATE.copyHotkeys(__BA_STATE.Config.hotkeys)
 	end
 end
 
-local function saveItem(item, fav)
+function __BA_STATE.saveItem(item, fav)
 	local name = (item.name and item.name ~= "") and item.name or ((item.kind == "bundle" and "Pack " or "Emote ") .. tostring(item.id))
 	local entry = { kind = item.kind, id = tostring(item.id), name = name, img = item.img }
-	if not libIndex(entry) then table.insert(libList(entry.kind), entry) end
-	if fav and not favIndex(entry) then
-		table.insert(Config.favs, { kind = entry.kind, id = entry.id, name = entry.name, img = entry.img })
+	if not __BA_STATE.libIndex(entry) then table.insert(__BA_STATE.libList(entry.kind), entry) end
+	if fav and not __BA_STATE.favIndex(entry) then
+		table.insert(__BA_STATE.Config.favs, { kind = entry.kind, id = entry.id, name = entry.name, img = entry.img })
 	end
-	save()
-	refreshPreviewButtons()
-	showTab(nil)
+	__BA_STATE.save()
+	__BA_STATE.refreshPreviewButtons()
+	__BA_STATE.showTab(nil)
 end
 
-local function removeItem(item)
-	local list = libList(item.kind)
-	local i = libIndex(item)
+function __BA_STATE.removeItem(item)
+	local list = __BA_STATE.libList(item.kind)
+	local i = __BA_STATE.libIndex(item)
 	if i then table.remove(list, i) end
-	local fi = favIndex(item)
-	if fi then table.remove(Config.favs, fi) end
-	Config.hotkeys[hkKey(item)] = nil
-	syncActiveProfile()
-	save()
-	refreshPreviewButtons()
-	showTab(nil)
+	local fi = __BA_STATE.favIndex(item)
+	if fi then table.remove(__BA_STATE.Config.favs, fi) end
+	__BA_STATE.Config.hotkeys[__BA_STATE.hkKey(item)] = nil
+	__BA_STATE.syncActiveProfile()
+	__BA_STATE.save()
+	__BA_STATE.refreshPreviewButtons()
+	__BA_STATE.showTab(nil)
 end
 
-local function activate(item)
+function __BA_STATE.activate(item)
 	if item.kind == "bundle" then
-		applyBundle({ kind = "bundle", id = item.id, name = item.name }, true)
+		__BA_STATE.applyBundle({ kind = "bundle", id = item.id, name = item.name }, true)
 	else
-		playEmote(item.id, item.name, true)
+		__BA_STATE.playEmote(item.id, item.name, true)
 	end
 end
 
 ----------------------------------------------------------------
 -- Velocidad, cancelar emote al moverse, deteccion de emotes del juego
 ----------------------------------------------------------------
-local prevPlaying = {}
-local function detectEmotes()
-	if not Animator then return end
+__BA_STATE.prevPlaying = {}
+function __BA_STATE.detectEmotes()
+	if not __BA_STATE.Animator then return end
 	local cur = {}
 	local animateSet
-	for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+	for _, t in ipairs(__BA_STATE.Animator:GetPlayingAnimationTracks()) do
 		cur[t] = true
 		-- solo cuenta cuando una animacion EMPIEZA (asi se detecta cada vez que se repite)
-		if not prevPlaying[t] and not ourTracks[t] then
-			animateSet = animateSet or animateIdSet()
-			if not (Char and Char:FindFirstChildOfClass("Tool")) and isGameEmoteTrack(t, animateSet) then
+		if not __BA_STATE.prevPlaying[t] and not __BA_STATE.ourTracks[t] then
+			animateSet = animateSet or __BA_STATE.animateIdSet()
+			if not (__BA_STATE.Char and __BA_STATE.Char:FindFirstChildOfClass("Tool")) and __BA_STATE.isGameEmoteTrack(t, animateSet) then
 				-- el juego empezo un emote: se corta el nuestro para no mezclar dos
-				if emote.track then stopEmote(0.1) end
-				local id = normId(t.Animation.AnimationId)
-				if Config.detect and id and not libIndex({ kind = "emote", id = id }) then
-					local img = (clickImg.image and os.clock() - clickImg.t < 2.5) and clickImg.image or nil
+				if __BA_STATE.emote.track then __BA_STATE.stopEmote(0.1) end
+				local id = __BA_STATE.normId(t.Animation.AnimationId)
+				if __BA_STATE.Config.detect and id and not __BA_STATE.libIndex({ kind = "emote", id = id }) then
+					local img = (__BA_STATE.clickImg.image and os.clock() - __BA_STATE.clickImg.t < 2.5) and __BA_STATE.clickImg.image or nil
 					task.spawn(function()
-						local info = assetInfo(id)
+						local info = __BA_STATE.assetInfo(id)
 						local name = info and info.Name or ("Emote " .. id)
 						if not img and info and info.IconImageAssetId and info.IconImageAssetId ~= 0 then
 							img = "rbxassetid://" .. tostring(info.IconImageAssetId)
 						end
-						showPreview({ kind = "emote", id = id, name = name, img = img }, "EMOTE DETECTED", nil, 25)
+						__BA_STATE.showPreview({ kind = "emote", id = id, name = name, img = img }, "EMOTE DETECTED", nil, 25)
 					end)
 				end
 			end
 		end
 	end
-	prevPlaying = cur
+	__BA_STATE.prevPlaying = cur
 end
 
-local speedModified = false
-local lastCheck = 0
-connect(RunService.Heartbeat, function()
-	if not Animator or not Animator.Parent then refreshChar() end
-	if emote.track then
-		pcall(function() emote.track:AdjustSpeed(Config.speed) end)
-		if not Config.keepEmote and Hum and os.clock() - emote.startedAt > 0.35 then
-			local st = Hum:GetState()
-			if Hum.MoveDirection.Magnitude > 0.1 or st == Enum.HumanoidStateType.Jumping or st == Enum.HumanoidStateType.Freefall then
-				stopEmote()
+__BA_STATE.speedModified = false
+__BA_STATE.lastCheck = 0
+__BA_STATE.connect(__BA_STATE.RunService.Heartbeat, function()
+	if not __BA_STATE.Animator or not __BA_STATE.Animator.Parent then __BA_STATE.refreshChar() end
+	if __BA_STATE.emote.track then
+		pcall(function() __BA_STATE.emote.track:AdjustSpeed(__BA_STATE.Config.speed) end)
+		if not __BA_STATE.Config.keepEmote and __BA_STATE.Hum and os.clock() - __BA_STATE.emote.startedAt > 0.35 then
+			local st = __BA_STATE.Hum:GetState()
+			if __BA_STATE.Hum.MoveDirection.Magnitude > 0.1 or st == Enum.HumanoidStateType.Jumping or st == Enum.HumanoidStateType.Freefall then
+				__BA_STATE.stopEmote()
 			end
 		end
-	elseif Animator then
-		if math.abs(Config.speed - 1) > 0.001 then
-			speedModified = true
-			for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
-				pcall(function() t:AdjustSpeed(Config.speed) end)
+	elseif __BA_STATE.Animator then
+		if math.abs(__BA_STATE.Config.speed - 1) > 0.001 then
+			__BA_STATE.speedModified = true
+			for _, t in ipairs(__BA_STATE.Animator:GetPlayingAnimationTracks()) do
+				pcall(function() t:AdjustSpeed(__BA_STATE.Config.speed) end)
 			end
-		elseif speedModified then
-			speedModified = false
-			for _, t in ipairs(Animator:GetPlayingAnimationTracks()) do
+		elseif __BA_STATE.speedModified then
+			__BA_STATE.speedModified = false
+			for _, t in ipairs(__BA_STATE.Animator:GetPlayingAnimationTracks()) do
 				pcall(function() t:AdjustSpeed(1) end)
 			end
 		end
 	end
-	if os.clock() - lastCheck > 0.15 then
-		lastCheck = os.clock()
-		pcall(detectEmotes)
+	if os.clock() - __BA_STATE.lastCheck > 0.15 then
+		__BA_STATE.lastCheck = os.clock()
+		pcall(__BA_STATE.detectEmotes)
 	end
 end)
 
 ----------------------------------------------------------------
 -- GUI base
 ----------------------------------------------------------------
-local gui = new("ScreenGui", {
-	Name = HttpService:GenerateGUID(false),
+__BA_STATE.gui = __BA_STATE.new("ScreenGui", {
+	Name = __BA_STATE.HttpService:GenerateGUID(false),
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -635,15 +637,15 @@ local gui = new("ScreenGui", {
 })
 do
 	local ok = pcall(function()
-		if syn and syn.protect_gui then syn.protect_gui(gui) end
-		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+		if syn and syn.protect_gui then syn.protect_gui(__BA_STATE.gui) end
+		__BA_STATE.gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 	end)
-	if not ok or not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+	if not ok or not __BA_STATE.gui.Parent then __BA_STATE.gui.Parent = __BA_STATE.LP:WaitForChild("PlayerGui") end
 end
 
 -- Cuando haces click en la GUI de tu juego (por ejemplo "reproducir emote"), guarda la imagen
 -- mas grande de ese boton/tarjeta para usarla como miniatura del emote detectado.
-local function findImageNear(obj)
+function __BA_STATE.findImageNear(obj)
 	local node = obj
 	for _ = 1, 6 do
 		if not node or node:IsA("PlayerGui") or node:IsA("LayerCollector") then break end
@@ -662,16 +664,16 @@ local function findImageNear(obj)
 	end
 end
 
-connect(UIS.InputBegan, function(input)
+__BA_STATE.connect(__BA_STATE.UIS.InputBegan, function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
 	pcall(function()
-		local pg = LP:FindFirstChildOfClass("PlayerGui")
+		local pg = __BA_STATE.LP:FindFirstChildOfClass("PlayerGui")
 		if not pg then return end
 		for _, o in ipairs(pg:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)) do
-			if not o:IsDescendantOf(gui) then
-				local img = findImageNear(o)
+			if not o:IsDescendantOf(__BA_STATE.gui) then
+				local img = __BA_STATE.findImageNear(o)
 				if img then
-					clickImg.image, clickImg.t = img, os.clock()
+					__BA_STATE.clickImg.image, __BA_STATE.clickImg.t = img, os.clock()
 				end
 				return
 			end
@@ -679,428 +681,428 @@ connect(UIS.InputBegan, function(input)
 	end)
 end)
 
-local function draggable(handle, frame)
+function __BA_STATE.draggable(handle, frame)
 	local dragging, dragStart, startPos = false, nil, nil
-	connect(handle.InputBegan, function(i)
+	__BA_STATE.connect(handle.InputBegan, function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = i.Position
 			startPos = frame.Position
 		end
 	end)
-	connect(UIS.InputChanged, function(i)
+	__BA_STATE.connect(__BA_STATE.UIS.InputChanged, function(i)
 		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 			local d = i.Position - dragStart
 			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
 		end
 	end)
-	connect(UIS.InputEnded, function(i)
+	__BA_STATE.connect(__BA_STATE.UIS.InputEnded, function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
 	end)
 end
 
-local function makeButton(props, parent)
-	local b = new("TextButton", {
-		BackgroundColor3 = C.btn, BorderSizePixel = 0, AutoButtonColor = true,
-		Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.txt,
+function __BA_STATE.makeButton(props, parent)
+	local b = __BA_STATE.new("TextButton", {
+		BackgroundColor3 = __BA_STATE.C.btn, BorderSizePixel = 0, AutoButtonColor = true,
+		Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = __BA_STATE.C.txt,
 	}, nil)
 	for k, v in pairs(props) do b[k] = v end
 	b.Parent = parent
-	corner(b, 6)
+	__BA_STATE.corner(b, 6)
 	return b
 end
 
-local function makeBox(props, parent)
-	local t = new("TextBox", {
-		BackgroundColor3 = C.panel, BorderSizePixel = 0, Font = Enum.Font.Gotham, TextSize = 13,
-		TextColor3 = C.txt, PlaceholderColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+function __BA_STATE.makeBox(props, parent)
+	local t = __BA_STATE.new("TextBox", {
+		BackgroundColor3 = __BA_STATE.C.panel, BorderSizePixel = 0, Font = Enum.Font.Gotham, TextSize = 13,
+		TextColor3 = __BA_STATE.C.txt, PlaceholderColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left,
 		ClearTextOnFocus = false,
 	}, nil)
 	for k, v in pairs(props) do t[k] = v end
 	t.Parent = parent
-	corner(t, 6)
-	new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, t)
+	__BA_STATE.corner(t, 6)
+	__BA_STATE.new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, t)
 	return t
 end
 
-local capture = nil
+__BA_STATE.capture = nil
 
 ----------------------------------------------------------------
 -- Ventana principal
 ----------------------------------------------------------------
-local initialViewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-local initialW = math.clamp(tonumber(Config.w) or 590, math.min(300, math.max(260, initialViewport.X - 20)), math.max(260, initialViewport.X - 20))
-local initialH = math.clamp(tonumber(Config.h) or 490, math.min(320, math.max(260, initialViewport.Y - 20)), math.max(260, initialViewport.Y - 20))
-local Main = new("Frame", {
-	Name = "Main", BackgroundColor3 = C.bg, BorderSizePixel = 0,
-	Size = UDim2.fromOffset(initialW, initialH),
-	Position = UDim2.new(0.5, -math.floor(initialW / 2), 0.5, -math.floor(initialH / 2)),
+__BA_STATE.initialViewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+__BA_STATE.initialW = math.clamp(tonumber(__BA_STATE.Config.w) or 590, math.min(300, math.max(260, __BA_STATE.initialViewport.X - 20)), math.max(260, __BA_STATE.initialViewport.X - 20))
+__BA_STATE.initialH = math.clamp(tonumber(__BA_STATE.Config.h) or 490, math.min(320, math.max(260, __BA_STATE.initialViewport.Y - 20)), math.max(260, __BA_STATE.initialViewport.Y - 20))
+__BA_STATE.Main = __BA_STATE.new("Frame", {
+	Name = "Main", BackgroundColor3 = __BA_STATE.C.bg, BorderSizePixel = 0,
+	Size = UDim2.fromOffset(__BA_STATE.initialW, __BA_STATE.initialH),
+	Position = UDim2.new(0.5, -math.floor(__BA_STATE.initialW / 2), 0.5, -math.floor(__BA_STATE.initialH / 2)),
 	ClipsDescendants = true,
-}, gui)
-corner(Main, 10)
-new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, Main)
+}, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.Main, 10)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, __BA_STATE.Main)
 
-local Title = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) }, Main)
-local logo = new("Frame", { BackgroundColor3 = C.white, Position = UDim2.fromOffset(12, 10), Size = UDim2.fromOffset(24, 24), BorderSizePixel = 0 }, Title)
-corner(logo, 5)
-new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "▶", Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = C.black }, logo)
-new("TextLabel", {
+__BA_STATE.Title = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) }, __BA_STATE.Main)
+__BA_STATE.logo = __BA_STATE.new("Frame", { BackgroundColor3 = __BA_STATE.C.white, Position = UDim2.fromOffset(12, 10), Size = UDim2.fromOffset(24, 24), BorderSizePixel = 0 }, __BA_STATE.Title)
+__BA_STATE.corner(__BA_STATE.logo, 5)
+__BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "▶", Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = __BA_STATE.C.black }, __BA_STATE.logo)
+__BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(46, 0), Size = UDim2.new(1, -140, 1, 0),
-	Text = "BUNDLE ANIMATIONS", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = C.txt,
+	Text = "BUNDLE ANIMATIONS", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = __BA_STATE.C.txt,
 	TextXAlignment = Enum.TextXAlignment.Left,
-}, Title)
-local CloseBtn = makeButton({ Text = "X", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -38, 0, 9) }, Title)
-local MinBtn = makeButton({ Text = "–", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -72, 0, 9) }, Title)
-draggable(Title, Main)
+}, __BA_STATE.Title)
+__BA_STATE.CloseBtn = __BA_STATE.makeButton({ Text = "X", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -38, 0, 9) }, __BA_STATE.Title)
+__BA_STATE.MinBtn = __BA_STATE.makeButton({ Text = "–", Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -72, 0, 9) }, __BA_STATE.Title)
+__BA_STATE.draggable(__BA_STATE.Title, __BA_STATE.Main)
 
-local SearchBox = makeBox({
+__BA_STATE.SearchBox = __BA_STATE.makeBox({
 	PlaceholderText = "Zombie, Cute", Text = "",
 	Position = UDim2.fromOffset(10, 48), Size = UDim2.new(1, -130, 0, 34),
-}, Main)
-local SearchBtn = makeButton({
+}, __BA_STATE.Main)
+__BA_STATE.SearchBtn = __BA_STATE.makeButton({
 	Text = "SEARCH", Position = UDim2.new(1, -110, 0, 48), Size = UDim2.fromOffset(100, 34),
-	BackgroundColor3 = C.white, TextColor3 = C.black,
-}, Main)
-local IdBox = makeBox({
+	BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black,
+}, __BA_STATE.Main)
+__BA_STATE.IdBox = __BA_STATE.makeBox({
 	PlaceholderText = "Url or ID", Text = "",
 	Position = UDim2.fromOffset(10, 92), Size = UDim2.new(1, -130, 0, 34),
-}, Main)
-local ApplyBtn = makeButton({ Text = "APPLY", Position = UDim2.new(1, -110, 0, 92), Size = UDim2.fromOffset(100, 34) }, Main)
+}, __BA_STATE.Main)
+__BA_STATE.ApplyBtn = __BA_STATE.makeButton({ Text = "APPLY", Position = UDim2.new(1, -110, 0, 92), Size = UDim2.fromOffset(100, 34) }, __BA_STATE.Main)
 
-local TabRow = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 136), Size = UDim2.new(1, -20, 0, 34), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.X, ScrollBarThickness = 0, ScrollingDirection = Enum.ScrollingDirection.X }, Main)
-new("UIListLayout", {
+__BA_STATE.TabRow = __BA_STATE.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 136), Size = UDim2.new(1, -20, 0, 34), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.X, ScrollBarThickness = 0, ScrollingDirection = Enum.ScrollingDirection.X }, __BA_STATE.Main)
+__BA_STATE.new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
-}, TabRow)
+}, __BA_STATE.TabRow)
 
-local tabButtons = {}
-local function tabBtn(key, text, scale, order)
-	local b = makeButton({ Text = text, Size = UDim2.new(scale, 0, 1, 0), LayoutOrder = order }, TabRow)
-	tabButtons[key] = b
+__BA_STATE.tabButtons = {}
+function __BA_STATE.tabBtn(key, text, scale, order)
+	local b = __BA_STATE.makeButton({ Text = text, Size = UDim2.new(scale, 0, 1, 0), LayoutOrder = order }, __BA_STATE.TabRow)
+	__BA_STATE.tabButtons[key] = b
 	return b
 end
-tabBtn("catalog", "CATALOG", 0.12, 1)
-tabBtn("bundles", "BUNDLES", 0.12, 2)
-tabBtn("emotes", "EMOTES", 0.12, 3)
-tabBtn("mix", "MIX", 0.07, 4)
-tabBtn("favs", "★ FAVS", 0.09, 5)
-tabBtn("profiles", "PROFILES", 0.13, 6)
-local GearBtn = makeButton({ Text = "⚙", TextSize = 16, Size = UDim2.new(0.06, 0, 1, 0), LayoutOrder = 7 }, TabRow)
-local StopBtn = makeButton({ Text = "STOP", Size = UDim2.new(0.08, 0, 1, 0), LayoutOrder = 8 }, TabRow)
-local ResetBtn = makeButton({ Text = "RESET", Size = UDim2.new(0.08, 0, 1, 0), LayoutOrder = 9 }, TabRow)
+__BA_STATE.tabBtn("catalog", "CATALOG", 0.12, 1)
+__BA_STATE.tabBtn("bundles", "BUNDLES", 0.12, 2)
+__BA_STATE.tabBtn("emotes", "EMOTES", 0.12, 3)
+__BA_STATE.tabBtn("mix", "MIX", 0.07, 4)
+__BA_STATE.tabBtn("favs", "★ FAVS", 0.09, 5)
+__BA_STATE.tabBtn("profiles", "PROFILES", 0.13, 6)
+__BA_STATE.GearBtn = __BA_STATE.makeButton({ Text = "⚙", TextSize = 16, Size = UDim2.new(0.06, 0, 1, 0), LayoutOrder = 7 }, __BA_STATE.TabRow)
+__BA_STATE.StopBtn = __BA_STATE.makeButton({ Text = "STOP", Size = UDim2.new(0.08, 0, 1, 0), LayoutOrder = 8 }, __BA_STATE.TabRow)
+__BA_STATE.ResetBtn = __BA_STATE.makeButton({ Text = "RESET", Size = UDim2.new(0.08, 0, 1, 0), LayoutOrder = 9 }, __BA_STATE.TabRow)
 
-local Content = new("Frame", {
+__BA_STATE.Content = __BA_STATE.new("Frame", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 178), Size = UDim2.new(1, -20, 1, -210), ClipsDescendants = true,
-}, Main)
+}, __BA_STATE.Main)
 
-local Grid = new("ScrollingFrame", {
+__BA_STATE.Grid = __BA_STATE.new("ScrollingFrame", {
 	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-	ScrollBarThickness = 4, ScrollBarImageColor3 = C.dim,
+	ScrollBarThickness = 4, ScrollBarImageColor3 = __BA_STATE.C.dim,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, Content)
-local GridLayout = new("UIGridLayout", {
+}, __BA_STATE.Content)
+__BA_STATE.GridLayout = __BA_STATE.new("UIGridLayout", {
 	CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder,
 	CellSize = UDim2.fromOffset(170, 190),
-}, Grid)
-new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, Grid)
+}, __BA_STATE.Grid)
+__BA_STATE.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, __BA_STATE.Grid)
 
-local EmptyLabel = new("TextLabel", {
+__BA_STATE.EmptyLabel = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, -40, 0, 80), Position = UDim2.new(0, 20, 0.5, -40),
-	Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = C.dim, TextWrapped = true, Text = "", Visible = false,
-}, Content)
+	Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = __BA_STATE.C.dim, TextWrapped = true, Text = "", Visible = false,
+}, __BA_STATE.Content)
 
-local MixPage = new("ScrollingFrame", {
+__BA_STATE.MixPage = __BA_STATE.new("ScrollingFrame", {
 	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false,
 	ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, Content)
-new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, MixPage)
-new("UIPadding", { PaddingRight = UDim.new(0, 8) }, MixPage)
+}, __BA_STATE.Content)
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.MixPage)
+__BA_STATE.new("UIPadding", { PaddingRight = UDim.new(0, 8) }, __BA_STATE.MixPage)
 
 -- Página independiente para guardar y cambiar perfiles de atajos.
-local ProfilePage = new("ScrollingFrame", {
+__BA_STATE.ProfilePage = __BA_STATE.new("ScrollingFrame", {
 	BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false,
-	ScrollBarThickness = 4, ScrollBarImageColor3 = C.dim,
+	ScrollBarThickness = 4, ScrollBarImageColor3 = __BA_STATE.C.dim,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, Content)
-new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ProfilePage)
-new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, ProfilePage)
+}, __BA_STATE.Content)
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.ProfilePage)
+__BA_STATE.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, __BA_STATE.ProfilePage)
 
 -- Catalogo global del Marketplace: la busqueda se separa en packs y emotes.
-local CatalogPage = new("Frame", {
+__BA_STATE.CatalogPage = __BA_STATE.new("Frame", {
 	BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false,
-}, Content)
-local CatalogSubRow = new("Frame", {
+}, __BA_STATE.Content)
+__BA_STATE.CatalogSubRow = __BA_STATE.new("Frame", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32),
-}, CatalogPage)
-new("UIListLayout", {
+}, __BA_STATE.CatalogPage)
+__BA_STATE.new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8),
 	SortOrder = Enum.SortOrder.LayoutOrder,
-}, CatalogSubRow)
-local CatalogPackBtn = makeButton({
+}, __BA_STATE.CatalogSubRow)
+__BA_STATE.CatalogPackBtn = __BA_STATE.makeButton({
 	Text = "ANIMATION PACKS", Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = 1,
-}, CatalogSubRow)
-local CatalogEmoteBtn = makeButton({
+}, __BA_STATE.CatalogSubRow)
+__BA_STATE.CatalogEmoteBtn = __BA_STATE.makeButton({
 	Text = "EMOTES", Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = 2,
-}, CatalogSubRow)
-local CatalogGrid = new("ScrollingFrame", {
+}, __BA_STATE.CatalogSubRow)
+__BA_STATE.CatalogGrid = __BA_STATE.new("ScrollingFrame", {
 	BackgroundTransparency = 1, BorderSizePixel = 0,
 	Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -78),
-	ScrollBarThickness = 4, ScrollBarImageColor3 = C.dim,
+	ScrollBarThickness = 4, ScrollBarImageColor3 = __BA_STATE.C.dim,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, CatalogPage)
-local CatalogGridLayout = new("UIGridLayout", {
+}, __BA_STATE.CatalogPage)
+__BA_STATE.CatalogGridLayout = __BA_STATE.new("UIGridLayout", {
 	CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder,
 	CellSize = UDim2.fromOffset(170, 190),
-}, CatalogGrid)
-new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, CatalogGrid)
+}, __BA_STATE.CatalogGrid)
+__BA_STATE.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, __BA_STATE.CatalogGrid)
 
-local function relayoutCatalog()
-	local width = math.max(120, CatalogGrid.AbsoluteSize.X - 8)
+function __BA_STATE.relayoutCatalog()
+	local width = math.max(120, __BA_STATE.CatalogGrid.AbsoluteSize.X - 8)
 	local cols = math.max(1, math.floor((width + 8) / 158))
 	local cellW = math.max(112, math.floor((width - (cols - 1) * 8) / cols))
-	CatalogGridLayout.CellSize = UDim2.fromOffset(cellW, math.floor(cellW * 0.82) + 78)
+	__BA_STATE.CatalogGridLayout.CellSize = UDim2.fromOffset(cellW, math.floor(cellW * 0.82) + 78)
 end
-connect(CatalogGrid:GetPropertyChangedSignal("AbsoluteSize"), relayoutCatalog)
-local CatalogEmpty = new("TextLabel", {
+__BA_STATE.connect(__BA_STATE.CatalogGrid:GetPropertyChangedSignal("AbsoluteSize"), __BA_STATE.relayoutCatalog)
+__BA_STATE.CatalogEmpty = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, -24, 0, 70),
 	Position = UDim2.fromOffset(12, 58), Font = Enum.Font.Gotham,
-	TextSize = 12, TextColor3 = C.dim, TextWrapped = true,
+	TextSize = 12, TextColor3 = __BA_STATE.C.dim, TextWrapped = true,
 	Text = "Search the Roblox Marketplace for animation packs or emotes.",
 	Visible = true,
-}, CatalogPage)
-local CatalogMoreBtn = makeButton({
+}, __BA_STATE.CatalogPage)
+__BA_STATE.CatalogMoreBtn = __BA_STATE.makeButton({
 	Text = "LOAD MORE", Position = UDim2.new(0, 0, 1, -32),
 	Size = UDim2.new(1, -8, 0, 28), Visible = false,
-}, CatalogPage)
+}, __BA_STATE.CatalogPage)
 
 -- Popup para guardar un elemento en una carpeta de perfiles.
-local ProfilePicker = new("Frame", {
-	BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false,
+__BA_STATE.ProfilePicker = __BA_STATE.new("Frame", {
+	BackgroundColor3 = __BA_STATE.C.bg, BorderSizePixel = 0, Visible = false,
 	Size = UDim2.fromOffset(300, 300), Position = UDim2.new(0.5, -150, 0.5, -150), ZIndex = 30,
-}, gui)
-corner(ProfilePicker, 10)
-new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, ProfilePicker)
-new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 30), Text = "SAVE TO PROFILE", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 31 }, ProfilePicker)
-local PickerList = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 44), Size = UDim2.new(1, -20, 1, -88), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4, ZIndex = 31 }, ProfilePicker)
-new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, PickerList)
-local PickerCancel = makeButton({ Text = "CANCEL", Position = UDim2.new(0, 10, 1, -36), Size = UDim2.new(1, -20, 0, 28), ZIndex = 31 }, ProfilePicker)
+}, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.ProfilePicker, 10)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, __BA_STATE.ProfilePicker)
+__BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 30), Text = "SAVE TO PROFILE", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 31 }, __BA_STATE.ProfilePicker)
+__BA_STATE.PickerList = __BA_STATE.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 44), Size = UDim2.new(1, -20, 1, -88), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4, ZIndex = 31 }, __BA_STATE.ProfilePicker)
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.PickerList)
+__BA_STATE.PickerCancel = __BA_STATE.makeButton({ Text = "CANCEL", Position = UDim2.new(0, 10, 1, -36), Size = UDim2.new(1, -20, 0, 28), ZIndex = 31 }, __BA_STATE.ProfilePicker)
 
-local RenamePopup = new("Frame", { BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false, Size = UDim2.fromOffset(300, 142), Position = UDim2.new(0.5, -150, 0.5, -71), ZIndex = 40 }, gui)
-corner(RenamePopup, 10)
-new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, RenamePopup)
-new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 24), Text = "EDIT NAME", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 41 }, RenamePopup)
-local RenameBox = makeBox({ Position = UDim2.fromOffset(12, 38), Size = UDim2.new(1, -24, 0, 32), Text = "", ZIndex = 41 }, RenamePopup)
-local RenameSave = makeButton({ Text = "SAVE", Position = UDim2.new(0, 12, 1, -40), Size = UDim2.new(0.5, -16, 0, 28), BackgroundColor3 = C.white, TextColor3 = C.black, ZIndex = 41 }, RenamePopup)
-local RenameCancel = makeButton({ Text = "CANCEL", Position = UDim2.new(0.5, 4, 1, -40), Size = UDim2.new(0.5, -16, 0, 28), ZIndex = 41 }, RenamePopup)
+__BA_STATE.RenamePopup = __BA_STATE.new("Frame", { BackgroundColor3 = __BA_STATE.C.bg, BorderSizePixel = 0, Visible = false, Size = UDim2.fromOffset(300, 142), Position = UDim2.new(0.5, -150, 0.5, -71), ZIndex = 40 }, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.RenamePopup, 10)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, __BA_STATE.RenamePopup)
+__BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 24), Text = "EDIT NAME", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 41 }, __BA_STATE.RenamePopup)
+__BA_STATE.RenameBox = __BA_STATE.makeBox({ Position = UDim2.fromOffset(12, 38), Size = UDim2.new(1, -24, 0, 32), Text = "", ZIndex = 41 }, __BA_STATE.RenamePopup)
+__BA_STATE.RenameSave = __BA_STATE.makeButton({ Text = "SAVE", Position = UDim2.new(0, 12, 1, -40), Size = UDim2.new(0.5, -16, 0, 28), BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black, ZIndex = 41 }, __BA_STATE.RenamePopup)
+__BA_STATE.RenameCancel = __BA_STATE.makeButton({ Text = "CANCEL", Position = UDim2.new(0.5, 4, 1, -40), Size = UDim2.new(0.5, -16, 0, 28), ZIndex = 41 }, __BA_STATE.RenamePopup)
 
-local profileIntro = new("TextLabel", {
+__BA_STATE.profileIntro = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 38), LayoutOrder = 1,
-	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim,
+	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = __BA_STATE.C.dim,
 	TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
 	TextWrapped = true,
 	Text = "Save your current emote hotkeys as a song profile, then load them whenever you need.",
-}, ProfilePage)
-local profileInputRow = new("Frame", {
+}, __BA_STATE.ProfilePage)
+__BA_STATE.profileInputRow = __BA_STATE.new("Frame", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 34), LayoutOrder = 2,
-}, ProfilePage)
-local profileNameBox = makeBox({
+}, __BA_STATE.ProfilePage)
+__BA_STATE.profileNameBox = __BA_STATE.makeBox({
 	PlaceholderText = "Profile name (e.g. TACATA)", Text = "",
 	Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, -108, 1, 0),
-}, profileInputRow)
-local createProfileBtn = makeButton({
+}, __BA_STATE.profileInputRow)
+__BA_STATE.createProfileBtn = __BA_STATE.makeButton({
 	Text = "SAVE NEW", Position = UDim2.new(1, -100, 0, 0),
 	Size = UDim2.fromOffset(100, 34),
-	BackgroundColor3 = C.white, TextColor3 = C.black,
-}, profileInputRow)
-local profileRows = new("Frame", {
+	BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black,
+}, __BA_STATE.profileInputRow)
+__BA_STATE.profileRows = __BA_STATE.new("Frame", {
 	BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0),
 	AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4,
-}, ProfilePage)
-new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, profileRows)
+}, __BA_STATE.ProfilePage)
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.profileRows)
 
-local profileMode = "hotkeys"
-local profileSubRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 32), LayoutOrder = 0 }, ProfilePage)
-new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, profileSubRow)
-local profileSubButtons = {}
-local function profileSubButton(key, label, order, width)
-	local b = makeButton({ Text = label, Size = UDim2.new(width, -4, 1, 0), LayoutOrder = order, TextSize = 10 }, profileSubRow)
-	profileSubButtons[key] = b
+__BA_STATE.profileMode = "hotkeys"
+__BA_STATE.profileSubRow = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 32), LayoutOrder = 0 }, __BA_STATE.ProfilePage)
+__BA_STATE.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.profileSubRow)
+__BA_STATE.profileSubButtons = {}
+function __BA_STATE.profileSubButton(key, label, order, width)
+	local b = __BA_STATE.makeButton({ Text = label, Size = UDim2.new(width, -4, 1, 0), LayoutOrder = order, TextSize = 10 }, __BA_STATE.profileSubRow)
+	__BA_STATE.profileSubButtons[key] = b
 	return b
 end
-profileSubButton("hotkeys", "HOTKEYS", 1, 0.25)
-profileSubButton("emotes", "EMOTES", 2, 0.25)
-profileSubButton("packs", "ANIM. PACKS", 3, 0.25)
-profileSubButton("mix", "MIXES", 4, 0.25)
+__BA_STATE.profileSubButton("hotkeys", "HOTKEYS", 1, 0.25)
+__BA_STATE.profileSubButton("emotes", "EMOTES", 2, 0.25)
+__BA_STATE.profileSubButton("packs", "ANIM. PACKS", 3, 0.25)
+__BA_STATE.profileSubButton("mix", "MIXES", 4, 0.25)
 
-local emoteProfilesPanel = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, ProfilePage)
-local packProfilesPanel = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, ProfilePage)
-local mixProfilesPanel = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, ProfilePage)
-local function makeFolderPanel(panel, kind, description)
-	new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, panel)
-	new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Text = description, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, panel)
-	local inputRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) }, panel)
-	local box = makeBox({ PlaceholderText = "New folder name", Text = "", Size = UDim2.new(1, -104, 1, 0) }, inputRow)
-	local add = makeButton({ Text = "CREATE", Position = UDim2.new(1, -96, 0, 0), Size = UDim2.fromOffset(96, 34), BackgroundColor3 = C.white, TextColor3 = C.black }, inputRow)
-	local rows = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, panel)
-	new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, rows)
+__BA_STATE.emoteProfilesPanel = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, __BA_STATE.ProfilePage)
+__BA_STATE.packProfilesPanel = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, __BA_STATE.ProfilePage)
+__BA_STATE.mixProfilesPanel = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Visible = false }, __BA_STATE.ProfilePage)
+function __BA_STATE.makeFolderPanel(panel, kind, description)
+	__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, panel)
+	__BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Text = description, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, panel)
+	local inputRow = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) }, panel)
+	local box = __BA_STATE.makeBox({ PlaceholderText = "New folder name", Text = "", Size = UDim2.new(1, -104, 1, 0) }, inputRow)
+	local add = __BA_STATE.makeButton({ Text = "CREATE", Position = UDim2.new(1, -96, 0, 0), Size = UDim2.fromOffset(96, 34), BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black }, inputRow)
+	local rows = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, panel)
+	__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, rows)
 	return box, add, rows
 end
-local emoteFolderBox, emoteFolderAdd, emoteFolderRows = makeFolderPanel(emoteProfilesPanel, "emote", "Create folders to organize emotes. Use the save icon on an emote to add it to a folder.")
-local packFolderBox, packFolderAdd, packFolderRows = makeFolderPanel(packProfilesPanel, "bundle", "Create folders to organize animation packs. A folder can contain multiple packs.")
-new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, mixProfilesPanel)
-local mixIntro = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Text = "Save your current animation mix with a name, then restore all its slots later.", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, mixProfilesPanel)
-local mixProfileInputRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) }, mixProfilesPanel)
-local mixProfileNameBox = makeBox({ PlaceholderText = "Mix name (e.g. Zombie walk + Mage jump)", Text = "", Size = UDim2.new(1, -104, 1, 0) }, mixProfileInputRow)
-local mixProfileSaveBtn = makeButton({ Text = "SAVE MIX", Position = UDim2.new(1, -96, 0, 0), Size = UDim2.fromOffset(96, 34), BackgroundColor3 = C.white, TextColor3 = C.black }, mixProfileInputRow)
-local mixProfileRows = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, mixProfilesPanel)
-new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, mixProfileRows)
+__BA_STATE.emoteFolderBox, __BA_STATE.emoteFolderAdd, __BA_STATE.emoteFolderRows = __BA_STATE.makeFolderPanel(__BA_STATE.emoteProfilesPanel, "emote", "Create folders to organize emotes. Use the save icon on an emote to add it to a folder.")
+__BA_STATE.packFolderBox, __BA_STATE.packFolderAdd, __BA_STATE.packFolderRows = __BA_STATE.makeFolderPanel(__BA_STATE.packProfilesPanel, "bundle", "Create folders to organize animation packs. A folder can contain multiple packs.")
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.mixProfilesPanel)
+__BA_STATE.mixIntro = __BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Text = "Save your current animation mix with a name, then restore all its slots later.", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, __BA_STATE.mixProfilesPanel)
+__BA_STATE.mixProfileInputRow = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) }, __BA_STATE.mixProfilesPanel)
+__BA_STATE.mixProfileNameBox = __BA_STATE.makeBox({ PlaceholderText = "Mix name (e.g. Zombie walk + Mage jump)", Text = "", Size = UDim2.new(1, -104, 1, 0) }, __BA_STATE.mixProfileInputRow)
+__BA_STATE.mixProfileSaveBtn = __BA_STATE.makeButton({ Text = "SAVE MIX", Position = UDim2.new(1, -96, 0, 0), Size = UDim2.fromOffset(96, 34), BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black }, __BA_STATE.mixProfileInputRow)
+__BA_STATE.mixProfileRows = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, __BA_STATE.mixProfilesPanel)
+__BA_STATE.new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, __BA_STATE.mixProfileRows)
 
-local Status = new("TextLabel", {
+__BA_STATE.Status = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.new(0, 12, 1, -26), Size = UDim2.new(1, -50, 0, 22),
-	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left, Text = "",
-}, Main)
+	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left, Text = "",
+}, __BA_STATE.Main)
 
-local Grip = new("TextButton", {
-	BackgroundTransparency = 1, Text = "◢", TextColor3 = C.dim, TextSize = 14, Font = Enum.Font.GothamBold,
+__BA_STATE.Grip = __BA_STATE.new("TextButton", {
+	BackgroundTransparency = 1, Text = "◢", TextColor3 = __BA_STATE.C.dim, TextSize = 14, Font = Enum.Font.GothamBold,
 	Position = UDim2.new(1, -24, 1, -24), Size = UDim2.fromOffset(22, 22), ZIndex = 5,
-}, Main)
+}, __BA_STATE.Main)
 
 ----------------------------------------------------------------
 -- Pestanas y tarjetas
 ----------------------------------------------------------------
-local state = { tab = "emotes", cardOrder = 0, filter = "" }
-local catalogKind = "bundle" -- bundle = packs de animaciones; emote = emotes
+__BA_STATE.state = { tab = "emotes", cardOrder = 0, filter = "" }
+__BA_STATE.catalogKind = "bundle"  -- bundle = packs de animaciones; emote = emotes
 
-local statusToken = 0
-local function defaultStatus()
-	if state.tab == "emotes" then
-		return ("Saved emotes: %d  •  paste an ID or play an emote to add more"):format(#Config.emotes)
-	elseif state.tab == "bundles" then
-		return ("Saved packs: %d  •  paste a pack ID or link to add more"):format(#Config.packs)
-	elseif state.tab == "favs" then
-		return ("Favorites: %d"):format(#Config.favs)
-	elseif state.tab == "profiles" then
-		return ("Saved profiles: %d  •  active: %s"):format(#Config.profiles, Config.activeProfile ~= "" and Config.activeProfile or "none")
-	elseif state.tab == "catalog" then
-		return catalogKind == "bundle" and "Roblox catalog • Animation packs" or "Roblox catalog • Emotes"
+__BA_STATE.statusToken = 0
+function __BA_STATE.defaultStatus()
+	if __BA_STATE.state.tab == "emotes" then
+		return ("Saved emotes: %d  •  paste an ID or play an emote to add more"):format(#__BA_STATE.Config.emotes)
+	elseif __BA_STATE.state.tab == "bundles" then
+		return ("Saved packs: %d  •  paste a pack ID or link to add more"):format(#__BA_STATE.Config.packs)
+	elseif __BA_STATE.state.tab == "favs" then
+		return ("Favorites: %d"):format(#__BA_STATE.Config.favs)
+	elseif __BA_STATE.state.tab == "profiles" then
+		return ("Saved profiles: %d  •  active: %s"):format(#__BA_STATE.Config.profiles, __BA_STATE.Config.activeProfile ~= "" and __BA_STATE.Config.activeProfile or "none")
+	elseif __BA_STATE.state.tab == "catalog" then
+		return __BA_STATE.catalogKind == "bundle" and "Roblox catalog • Animation packs" or "Roblox catalog • Emotes"
 	end
 	return "Type an ID or link for each slot and press Enter"
 end
-local function setStatus(text) Status.Text = text or defaultStatus() end
-notify = function(text)
-	statusToken += 1
-	local t = statusToken
-	Status.Text = tostring(text)
+function __BA_STATE.setStatus(text) Status.Text = text or defaultStatus() end
+__BA_STATE.notify = function(text)
+	__BA_STATE.statusToken += 1
+	local t = __BA_STATE.statusToken
+	__BA_STATE.Status.Text = tostring(text)
 	task.delay(2.5, function()
-		if t == statusToken then setStatus() end
+		if t == __BA_STATE.statusToken then __BA_STATE.setStatus() end
 	end)
 end
 
-local function mouseInside(obj)
-	local m = UIS:GetMouseLocation()
+function __BA_STATE.mouseInside(obj)
+	local m = __BA_STATE.UIS:GetMouseLocation()
 	local p, s = obj.AbsolutePosition, obj.AbsoluteSize
 	return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
 end
 
-local openProfilePicker, openRenameItem
+__BA_STATE.openProfilePicker, __BA_STATE.openRenameItem = nil
 
-local function createCard(item)
-	state.cardOrder += 1
-	local card = new("Frame", { BackgroundColor3 = C.card, BorderSizePixel = 0, LayoutOrder = state.cardOrder })
-	corner(card, 8)
+function __BA_STATE.createCard(item)
+	__BA_STATE.state.cardOrder += 1
+	local card = __BA_STATE.new("Frame", { BackgroundColor3 = __BA_STATE.C.card, BorderSizePixel = 0, LayoutOrder = __BA_STATE.state.cardOrder })
+	__BA_STATE.corner(card, 8)
 
 	local thumbType = item.kind == "bundle" and "BundleThumbnail" or "Asset"
-	local thumb = new("ImageButton", {
-		BackgroundColor3 = C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -50),
+	local thumb = __BA_STATE.new("ImageButton", {
+		BackgroundColor3 = __BA_STATE.C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -50),
 		ScaleType = Enum.ScaleType.Fit, AutoButtonColor = false,
 		Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(thumbType, tostring(item.id)),
 	}, card)
-	corner(thumb, 6)
+	__BA_STATE.corner(thumb, 6)
 
-	local nameBtn = makeButton({
+	local nameBtn = __BA_STATE.makeButton({
 		Text = string.upper(item.name or "?"), TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd,
 		Position = UDim2.new(0, 6, 1, -38), Size = UDim2.new(1, -64, 0, 32), ZIndex = 2,
 	}, card)
 
 	local dark = Color3.fromRGB(20, 20, 22)
-	local idBtn = makeButton({
+	local idBtn = __BA_STATE.makeButton({
 		Text = "ID", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3,
 		Position = UDim2.new(1, -58, 0, 10), Size = UDim2.fromOffset(28, 20),
 	}, card)
-	local star = makeButton({
-		Text = favIndex(item) and "★" or "☆", TextSize = 14, BackgroundColor3 = dark, ZIndex = 3,
-		TextColor3 = favIndex(item) and C.gold or C.txt,
+	local star = __BA_STATE.makeButton({
+		Text = __BA_STATE.favIndex(item) and "★" or "☆", TextSize = 14, BackgroundColor3 = dark, ZIndex = 3,
+		TextColor3 = __BA_STATE.favIndex(item) and __BA_STATE.C.gold or __BA_STATE.C.txt,
 		Position = UDim2.new(1, -28, 0, 10), Size = UDim2.fromOffset(22, 20),
 	}, card)
-	local hk = makeButton({
+	local hk = __BA_STATE.makeButton({
 		Text = "KEY", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3,
 		Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(60, 20), Visible = false,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	}, card)
-	local del = makeButton({
+	local del = __BA_STATE.makeButton({
 		Text = "✕", TextSize = 11, BackgroundColor3 = dark, ZIndex = 3, TextColor3 = Color3.fromRGB(255, 120, 120),
 		Position = UDim2.fromOffset(74, 10), Size = UDim2.fromOffset(22, 20), Visible = false,
 	}, card)
-	local edit = makeButton({ Text = "✏", TextSize = 11, BackgroundColor3 = dark, ZIndex = 4, Position = UDim2.new(1, -54, 1, -38), Size = UDim2.fromOffset(22, 20), Visible = true }, card)
-	local profileSave = makeButton({ Text = "💾", TextSize = 11, BackgroundColor3 = dark, ZIndex = 4, Position = UDim2.new(1, -28, 1, -38), Size = UDim2.fromOffset(22, 20), Visible = true }, card)
+	local edit = __BA_STATE.makeButton({ Text = "✏", TextSize = 11, BackgroundColor3 = dark, ZIndex = 4, Position = UDim2.new(1, -54, 1, -38), Size = UDim2.fromOffset(22, 20), Visible = true }, card)
+	local profileSave = __BA_STATE.makeButton({ Text = "💾", TextSize = 11, BackgroundColor3 = dark, ZIndex = 4, Position = UDim2.new(1, -28, 1, -38), Size = UDim2.fromOffset(22, 20), Visible = true }, card)
 
 	local hovered = false
 	local function refreshHK()
-		local e = Config.hotkeys[hkKey(item)]
+		local e = __BA_STATE.Config.hotkeys[__BA_STATE.hkKey(item)]
 		hk.Text = e and e.key or "KEY"
-		hk.TextColor3 = e and C.gold or C.dim
+		hk.TextColor3 = e and __BA_STATE.C.gold or __BA_STATE.C.dim
 		hk.Visible = hovered or e ~= nil
-		del.Visible = hovered and state.tab ~= "favs"
+		del.Visible = hovered and __BA_STATE.state.tab ~= "favs"
 		profileSave.Visible = true
 	end
 	refreshHK()
 
 	card.MouseEnter:Connect(function() hovered = true; refreshHK() end)
 	card.MouseLeave:Connect(function()
-		if mouseInside(card) then return end
+		if __BA_STATE.mouseInside(card) then return end
 		hovered = false
 		refreshHK()
 	end)
 
-	nameBtn.MouseButton1Click:Connect(function() activate(item) end)
-	thumb.MouseButton1Click:Connect(function() activate(item) end)
+	nameBtn.MouseButton1Click:Connect(function() __BA_STATE.activate(item) end)
+	thumb.MouseButton1Click:Connect(function() __BA_STATE.activate(item) end)
 	idBtn.MouseButton1Click:Connect(function()
 		pcall(function() if setclipboard then setclipboard(tostring(item.id)) end end)
-		notify("ID copied: " .. tostring(item.id))
+		__BA_STATE.notify("ID copied: " .. tostring(item.id))
 	end)
 	star.MouseButton1Click:Connect(function()
-		local i = favIndex(item)
+		local i = __BA_STATE.favIndex(item)
 		if i then
-			table.remove(Config.favs, i)
+			table.remove(__BA_STATE.Config.favs, i)
 		else
 			-- un favorito siempre queda tambien guardado en su pestana
-			saveItem(item, true)
+			__BA_STATE.saveItem(item, true)
 			return
 		end
-		save()
-		refreshPreviewButtons()
-		if state.tab == "favs" then
-			showTab(nil)
+		__BA_STATE.save()
+		__BA_STATE.refreshPreviewButtons()
+		if __BA_STATE.state.tab == "favs" then
+			__BA_STATE.showTab(nil)
 		else
 			star.Text = "☆"
-			star.TextColor3 = C.txt
+			star.TextColor3 = __BA_STATE.C.txt
 		end
 	end)
-	del.MouseButton1Click:Connect(function() removeItem(item) end)
-	edit.MouseButton1Click:Connect(function() if openRenameItem then openRenameItem(item) end end)
-	profileSave.MouseButton1Click:Connect(function() if openProfilePicker then openProfilePicker(item) end end)
+	del.MouseButton1Click:Connect(function() __BA_STATE.removeItem(item) end)
+	edit.MouseButton1Click:Connect(function() if __BA_STATE.openRenameItem then __BA_STATE.openRenameItem(item) end end)
+	profileSave.MouseButton1Click:Connect(function() if __BA_STATE.openProfilePicker then __BA_STATE.openProfilePicker(item) end end)
 	hk.MouseButton1Click:Connect(function()
 		hk.Text = "..."
-		hk.TextColor3 = C.white
-		capture = function(kc)
+		hk.TextColor3 = __BA_STATE.C.white
+		__BA_STATE.capture = function(kc)
 			if kc == Enum.KeyCode.Escape then
-				Config.hotkeys[hkKey(item)] = nil
+				__BA_STATE.Config.hotkeys[__BA_STATE.hkKey(item)] = nil
 			else
-				Config.hotkeys[hkKey(item)] = { kind = item.kind, id = item.id, name = item.name, key = kc.Name }
+				__BA_STATE.Config.hotkeys[__BA_STATE.hkKey(item)] = { kind = item.kind, id = item.id, name = item.name, key = kc.Name }
 			end
-			syncActiveProfile()
-			save()
+			__BA_STATE.syncActiveProfile()
+			__BA_STATE.save()
 			if hk.Parent then refreshHK() end
 		end
 	end)
@@ -1108,190 +1110,190 @@ local function createCard(item)
 	return card
 end
 
-local function relayout()
-	local W = Grid.AbsoluteSize.X - 8
+function __BA_STATE.relayout()
+	local W = __BA_STATE.Grid.AbsoluteSize.X - 8
 	local cols = math.max(1, math.floor((W + 8) / 158))
 	local cellW = math.floor((W - (cols - 1) * 8) / cols)
-	GridLayout.CellSize = UDim2.fromOffset(cellW, math.floor(cellW * 0.82) + 46)
+	__BA_STATE.GridLayout.CellSize = UDim2.fromOffset(cellW, math.floor(cellW * 0.82) + 46)
 end
-connect(Grid:GetPropertyChangedSignal("AbsoluteSize"), relayout)
-connect(Main:GetPropertyChangedSignal("AbsoluteSize"), function()
-	task.defer(relayout)
-	task.defer(relayoutCatalog)
+__BA_STATE.connect(__BA_STATE.Grid:GetPropertyChangedSignal("AbsoluteSize"), __BA_STATE.relayout)
+__BA_STATE.connect(__BA_STATE.Main:GetPropertyChangedSignal("AbsoluteSize"), function()
+	task.defer(__BA_STATE.relayout)
+	task.defer(__BA_STATE.relayoutCatalog)
 end)
 
-local function clearCards()
-	for _, c in ipairs(Grid:GetChildren()) do
+function __BA_STATE.clearCards()
+	for _, c in ipairs(__BA_STATE.Grid:GetChildren()) do
 		if c:IsA("Frame") then c:Destroy() end
 	end
-	state.cardOrder = 0
+	__BA_STATE.state.cardOrder = 0
 end
 
-local function renderProfiles()
-	for _, child in ipairs(profileRows:GetChildren()) do
+function __BA_STATE.renderProfiles()
+	for _, child in ipairs(__BA_STATE.profileRows:GetChildren()) do
 		if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
 	end
 
-	for index, profile in ipairs(Config.profiles) do
-		local row = new("Frame", {
-			BackgroundColor3 = C.card, BorderSizePixel = 0,
+	for index, profile in ipairs(__BA_STATE.Config.profiles) do
+		local row = __BA_STATE.new("Frame", {
+			BackgroundColor3 = __BA_STATE.C.card, BorderSizePixel = 0,
 			Size = UDim2.new(1, -4, 0, 48), LayoutOrder = index,
-		}, profileRows)
-		corner(row, 7)
+		}, __BA_STATE.profileRows)
+		__BA_STATE.corner(row, 7)
 
-		local isActive = Config.activeProfile == profile.name
+		local isActive = __BA_STATE.Config.activeProfile == profile.name
 		local count = 0
 		for _ in pairs(profile.hotkeys or {}) do count += 1 end
-		new("TextLabel", {
+		__BA_STATE.new("TextLabel", {
 			BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 0),
 			Size = UDim2.new(1, -230, 1, 0),
 			Font = Enum.Font.GothamBold, TextSize = 12,
-			TextColor3 = isActive and C.gold or C.txt,
+			TextColor3 = isActive and __BA_STATE.C.gold or __BA_STATE.C.txt,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Text = (isActive and "● " or "") .. profile.name .. "  (" .. count .. " keys)",
 		}, row)
 
-		local load = makeButton({
+		local load = __BA_STATE.makeButton({
 			Text = "LOAD", Position = UDim2.new(1, -214, 0, 8),
 			Size = UDim2.fromOffset(62, 32),
-			BackgroundColor3 = isActive and C.white or C.btn,
-			TextColor3 = isActive and C.black or C.txt,
+			BackgroundColor3 = isActive and __BA_STATE.C.white or __BA_STATE.C.btn,
+			TextColor3 = isActive and __BA_STATE.C.black or __BA_STATE.C.txt,
 		}, row)
-		local update = makeButton({
+		local update = __BA_STATE.makeButton({
 			Text = "UPDATE", Position = UDim2.new(1, -146, 0, 8),
 			Size = UDim2.fromOffset(70, 32),
 		}, row)
-		local delete = makeButton({
+		local delete = __BA_STATE.makeButton({
 			Text = "✕", Position = UDim2.new(1, -70, 0, 8),
 			Size = UDim2.fromOffset(60, 32),
 			TextColor3 = Color3.fromRGB(255, 120, 120),
 		}, row)
 
 		load.MouseButton1Click:Connect(function()
-			Config.hotkeys = copyHotkeys(profile.hotkeys)
-			Config.activeProfile = profile.name
-			save()
-			if state.tab == "profiles" then renderProfiles() end
-			refreshPreviewButtons()
-			notify("Profile loaded: " .. profile.name)
+			__BA_STATE.Config.hotkeys = __BA_STATE.copyHotkeys(profile.hotkeys)
+			__BA_STATE.Config.activeProfile = profile.name
+			__BA_STATE.save()
+			if __BA_STATE.state.tab == "profiles" then __BA_STATE.renderProfiles() end
+			__BA_STATE.refreshPreviewButtons()
+			__BA_STATE.notify("Profile loaded: " .. profile.name)
 		end)
 
 		update.MouseButton1Click:Connect(function()
-			profile.hotkeys = copyHotkeys(Config.hotkeys)
-			Config.activeProfile = profile.name
-			save()
-			renderProfiles()
-			notify("Profile updated: " .. profile.name)
+			profile.hotkeys = __BA_STATE.copyHotkeys(__BA_STATE.Config.hotkeys)
+			__BA_STATE.Config.activeProfile = profile.name
+			__BA_STATE.save()
+			__BA_STATE.renderProfiles()
+			__BA_STATE.notify("Profile updated: " .. profile.name)
 		end)
 
 		delete.MouseButton1Click:Connect(function()
-			local removeIndex = findProfile(profile.name)
-			if removeIndex then table.remove(Config.profiles, removeIndex) end
-			if Config.activeProfile == profile.name then Config.activeProfile = "" end
-			save()
-			renderProfiles()
-			notify("Profile deleted: " .. profile.name)
+			local removeIndex = __BA_STATE.findProfile(profile.name)
+			if removeIndex then table.remove(__BA_STATE.Config.profiles, removeIndex) end
+			if __BA_STATE.Config.activeProfile == profile.name then __BA_STATE.Config.activeProfile = "" end
+			__BA_STATE.save()
+			__BA_STATE.renderProfiles()
+			__BA_STATE.notify("Profile deleted: " .. profile.name)
 		end)
 	end
 
-	if #Config.profiles == 0 then
-		local empty = new("TextLabel", {
+	if #__BA_STATE.Config.profiles == 0 then
+		local empty = __BA_STATE.new("TextLabel", {
 			BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 54),
-			Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim,
+			Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = __BA_STATE.C.dim,
 			TextWrapped = true, Text = "No profiles saved yet. Set your emote keys, enter a song name and press SAVE NEW.",
 			TextXAlignment = Enum.TextXAlignment.Left,
-		}, profileRows)
+		}, __BA_STATE.profileRows)
 	end
 end
 
-local function setProfileMode(mode)
-	profileMode = mode
-	for key, button in pairs(profileSubButtons) do
+function __BA_STATE.setProfileMode(mode)
+	__BA_STATE.profileMode = mode
+	for key, button in pairs(__BA_STATE.profileSubButtons) do
 		local active = key == mode
-		button.BackgroundColor3 = active and C.white or C.btn
-		button.TextColor3 = active and C.black or C.txt
+		button.BackgroundColor3 = active and __BA_STATE.C.white or __BA_STATE.C.btn
+		button.TextColor3 = active and __BA_STATE.C.black or __BA_STATE.C.txt
 	end
-	profileIntro.Visible = mode == "hotkeys"
-	profileInputRow.Visible = mode == "hotkeys"
-	profileRows.Visible = mode == "hotkeys"
-	emoteProfilesPanel.Visible = mode == "emotes"
-	packProfilesPanel.Visible = mode == "packs"
-	mixProfilesPanel.Visible = mode == "mix"
+	__BA_STATE.profileIntro.Visible = mode == "hotkeys"
+	__BA_STATE.profileInputRow.Visible = mode == "hotkeys"
+	__BA_STATE.profileRows.Visible = mode == "hotkeys"
+	__BA_STATE.emoteProfilesPanel.Visible = mode == "emotes"
+	__BA_STATE.packProfilesPanel.Visible = mode == "packs"
+	__BA_STATE.mixProfilesPanel.Visible = mode == "mix"
 end
 
-local function renderCollectionFolders(kind)
-	local rows = kind == "bundle" and packFolderRows or emoteFolderRows
+function __BA_STATE.renderCollectionFolders(kind)
+	local rows = kind == "bundle" and __BA_STATE.packFolderRows or __BA_STATE.emoteFolderRows
 	for _, child in ipairs(rows:GetChildren()) do
 		if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
 	end
 
-	for index, folder in ipairs(collectionProfiles(kind)) do
+	for index, folder in ipairs(__BA_STATE.collectionProfiles(kind)) do
 		folder.items = folder.items or {}
-		local container = new("Frame", {
-			BackgroundColor3 = C.card, BorderSizePixel = 0,
+		local container = __BA_STATE.new("Frame", {
+			BackgroundColor3 = __BA_STATE.C.card, BorderSizePixel = 0,
 			Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = index,
 		}, rows)
-		corner(container, 7)
-		new("UIListLayout", {
+		__BA_STATE.corner(container, 7)
+		__BA_STATE.new("UIListLayout", {
 			Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder,
 		}, container)
-		new("UIPadding", {
+		__BA_STATE.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6),
 			PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 6),
 		}, container)
 
-		local header = new("Frame", {
+		local header = __BA_STATE.new("Frame", {
 			BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36),
 			LayoutOrder = 1,
 		}, container)
 		local count = #folder.items
-		new("TextLabel", {
+		__BA_STATE.new("TextLabel", {
 			BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 0),
 			Size = UDim2.new(1, -166, 1, 0), Font = Enum.Font.GothamBold,
-			TextSize = 12, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left,
+			TextSize = 12, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left,
 			Text = folder.name .. "  (" .. count .. ")",
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		}, header)
-		local open = makeButton({
+		local open = __BA_STATE.makeButton({
 			Text = "OPEN", Position = UDim2.new(1, -154, 0, 3),
 			Size = UDim2.fromOffset(70, 30),
 		}, header)
-		local del = makeButton({
+		local del = __BA_STATE.makeButton({
 			Text = "✕", Position = UDim2.new(1, -78, 0, 3),
 			Size = UDim2.fromOffset(70, 30), TextColor3 = Color3.fromRGB(255, 120, 120),
 		}, header)
 
-		local detail = new("Frame", {
+		local detail = __BA_STATE.new("Frame", {
 			Name = "FolderItems", BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = 2, Visible = false,
 		}, container)
-		new("UIListLayout", {
+		__BA_STATE.new("UIListLayout", {
 			Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder,
 		}, detail)
 
 		for itemIndex, item in ipairs(folder.items) do
-			local itemRow = new("Frame", {
-				BackgroundColor3 = C.panel, BorderSizePixel = 0,
+			local itemRow = __BA_STATE.new("Frame", {
+				BackgroundColor3 = __BA_STATE.C.panel, BorderSizePixel = 0,
 				Size = UDim2.new(1, 0, 0, 36), LayoutOrder = itemIndex,
 			}, detail)
-			corner(itemRow, 5)
-			new("TextLabel", {
+			__BA_STATE.corner(itemRow, 5)
+			__BA_STATE.new("TextLabel", {
 				BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 0),
 				Size = UDim2.new(1, -142, 1, 0), Text = item.name or tostring(item.id),
-				Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.txt,
+				Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.txt,
 				TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 			}, itemRow)
-			local use = makeButton({
+			local use = __BA_STATE.makeButton({
 				Text = kind == "bundle" and "APPLY" or "PLAY",
 				Position = UDim2.new(1, -132, 0, 4), Size = UDim2.fromOffset(68, 28),
 			}, itemRow)
-			local remove = makeButton({
+			local remove = __BA_STATE.makeButton({
 				Text = "✕", Position = UDim2.new(1, -58, 0, 4),
 				Size = UDim2.fromOffset(50, 28), TextColor3 = Color3.fromRGB(255, 120, 120),
 			}, itemRow)
-			use.MouseButton1Click:Connect(function() activate(item) end)
+			use.MouseButton1Click:Connect(function() __BA_STATE.activate(item) end)
 			remove.MouseButton1Click:Connect(function()
 				for savedIndex, saved in ipairs(folder.items) do
 					if tostring(saved.id) == tostring(item.id) then
@@ -1299,15 +1301,15 @@ local function renderCollectionFolders(kind)
 						break
 					end
 				end
-				save()
-				renderCollectionFolders(kind)
+				__BA_STATE.save()
+				__BA_STATE.renderCollectionFolders(kind)
 			end)
 		end
 		if count == 0 then
-			new("TextLabel", {
+			__BA_STATE.new("TextLabel", {
 				BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30),
 				Text = "This folder is empty. Save an item to add it here.",
-				Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim,
+				Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim,
 				TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1,
 			}, detail)
 		end
@@ -1317,97 +1319,97 @@ local function renderCollectionFolders(kind)
 			open.Text = detail.Visible and "CLOSE" or "OPEN"
 		end)
 		del.MouseButton1Click:Connect(function()
-			local idx = findCollectionFolder(kind, folder.name)
-			if idx then table.remove(collectionProfiles(kind), idx) end
-			save()
-			renderCollectionFolders(kind)
+			local idx = __BA_STATE.findCollectionFolder(kind, folder.name)
+			if idx then table.remove(__BA_STATE.collectionProfiles(kind), idx) end
+			__BA_STATE.save()
+			__BA_STATE.renderCollectionFolders(kind)
 		end)
 	end
 
-	if #collectionProfiles(kind) == 0 then
-		new("TextLabel", {
+	if #__BA_STATE.collectionProfiles(kind) == 0 then
+		__BA_STATE.new("TextLabel", {
 			BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 38),
 			Text = "No folders yet. Create one above.", Font = Enum.Font.Gotham,
-			TextSize = 11, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+			TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left,
 		}, rows)
 	end
 end
 
-local function createCollectionFolder(kind, box)
+function __BA_STATE.createCollectionFolder(kind, box)
 	local name = (box.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-	if name == "" then notify("Enter a folder name first"); return end
-	if findCollectionFolder(kind, name) then notify("A folder with that name already exists"); return end
-	table.insert(collectionProfiles(kind), { name = name, items = {} })
-	box.Text = ""; save(); renderCollectionFolders(kind); notify("Folder created: " .. name)
+	if name == "" then __BA_STATE.notify("Enter a folder name first"); return end
+	if __BA_STATE.findCollectionFolder(kind, name) then __BA_STATE.notify("A folder with that name already exists"); return end
+	table.insert(__BA_STATE.collectionProfiles(kind), { name = name, items = {} })
+	box.Text = ""; __BA_STATE.save(); __BA_STATE.renderCollectionFolders(kind); __BA_STATE.notify("Folder created: " .. name)
 end
-emoteFolderAdd.MouseButton1Click:Connect(function() createCollectionFolder("emote", emoteFolderBox) end)
-packFolderAdd.MouseButton1Click:Connect(function() createCollectionFolder("bundle", packFolderBox) end)
+__BA_STATE.emoteFolderAdd.MouseButton1Click:Connect(function() __BA_STATE.createCollectionFolder("emote", __BA_STATE.emoteFolderBox) end)
+__BA_STATE.packFolderAdd.MouseButton1Click:Connect(function() __BA_STATE.createCollectionFolder("bundle", __BA_STATE.packFolderBox) end)
 
-local mixInputBoxes = {}
+__BA_STATE.mixInputBoxes = {}
 
-local function renderMixProfiles()
-	for _, child in ipairs(mixProfileRows:GetChildren()) do if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end end
-	for index, profile in ipairs(Config.mixProfiles) do
-		local row = new("Frame", { BackgroundColor3 = C.card, BorderSizePixel = 0, Size = UDim2.new(1, -4, 0, 44), LayoutOrder = index }, mixProfileRows)
-		corner(row, 7)
-		local count = 0; for _, slot in ipairs(SLOT_ORDER) do if profile.slots and profile.slots[slot] and profile.slots[slot] ~= "" then count += 1 end end
-		new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -190, 1, 0), Text = profile.name .. "  (" .. count .. "/" .. #SLOT_ORDER .. " slots)", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, row)
-		local load = makeButton({ Text = "LOAD", Position = UDim2.new(1, -176, 0, 7), Size = UDim2.fromOffset(76, 30), BackgroundColor3 = C.white, TextColor3 = C.black }, row)
-		local del = makeButton({ Text = "✕", Position = UDim2.new(1, -92, 0, 7), Size = UDim2.fromOffset(80, 30), TextColor3 = Color3.fromRGB(255, 120, 120) }, row)
+function __BA_STATE.renderMixProfiles()
+	for _, child in ipairs(__BA_STATE.mixProfileRows:GetChildren()) do if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end end
+	for index, profile in ipairs(__BA_STATE.Config.mixProfiles) do
+		local row = __BA_STATE.new("Frame", { BackgroundColor3 = __BA_STATE.C.card, BorderSizePixel = 0, Size = UDim2.new(1, -4, 0, 44), LayoutOrder = index }, __BA_STATE.mixProfileRows)
+		__BA_STATE.corner(row, 7)
+		local count = 0; for _, slot in ipairs(__BA_STATE.SLOT_ORDER) do if profile.slots and profile.slots[slot] and profile.slots[slot] ~= "" then count += 1 end end
+		__BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -190, 1, 0), Text = profile.name .. "  (" .. count .. "/" .. #__BA_STATE.SLOT_ORDER .. " slots)", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, row)
+		local load = __BA_STATE.makeButton({ Text = "LOAD", Position = UDim2.new(1, -176, 0, 7), Size = UDim2.fromOffset(76, 30), BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black }, row)
+		local del = __BA_STATE.makeButton({ Text = "✕", Position = UDim2.new(1, -92, 0, 7), Size = UDim2.fromOffset(80, 30), TextColor3 = Color3.fromRGB(255, 120, 120) }, row)
 		load.MouseButton1Click:Connect(function()
 			local slots = {}
-			Config.mix = copyMixSlots(profile.slots)
-			for _, slot in ipairs(SLOT_ORDER) do
+			__BA_STATE.Config.mix = __BA_STATE.copyMixSlots(profile.slots)
+			for _, slot in ipairs(__BA_STATE.SLOT_ORDER) do
 				local raw = profile.slots and profile.slots[slot]
-				if raw then local id = parseId(raw); if id then slots[slot] = resolveAnimId(id) end end
-				if mixInputBoxes[slot] then mixInputBoxes[slot].Text = raw or "" end
+				if raw then local id = __BA_STATE.parseId(raw); if id then slots[slot] = __BA_STATE.resolveAnimId(id) end end
+				if __BA_STATE.mixInputBoxes[slot] then __BA_STATE.mixInputBoxes[slot].Text = raw or "" end
 			end
-			save()
-			if next(slots) and applySlots(slots) then notify("Mix loaded: " .. profile.name) else notify("This mix has no valid animation slots") end
+			__BA_STATE.save()
+			if next(slots) and __BA_STATE.applySlots(slots) then __BA_STATE.notify("Mix loaded: " .. profile.name) else __BA_STATE.notify("This mix has no valid animation slots") end
 		end)
-		del.MouseButton1Click:Connect(function() table.remove(Config.mixProfiles, index); save(); renderMixProfiles() end)
+		del.MouseButton1Click:Connect(function() table.remove(__BA_STATE.Config.mixProfiles, index); __BA_STATE.save(); __BA_STATE.renderMixProfiles() end)
 	end
-	if #Config.mixProfiles == 0 then new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 38), Text = "No saved mixes yet. Configure slots in MIX, then save one here.", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left }, mixProfileRows) end
+	if #__BA_STATE.Config.mixProfiles == 0 then __BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 38), Text = "No saved mixes yet. Configure slots in MIX, then save one here.", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left }, __BA_STATE.mixProfileRows) end
 end
 
-mixProfileSaveBtn.MouseButton1Click:Connect(function()
-	local name = (mixProfileNameBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-	if name == "" then notify("Enter a name for this mix first"); return end
-	for _, profile in ipairs(Config.mixProfiles) do if string.lower(profile.name) == string.lower(name) then notify("That mix name already exists"); return end end
-	local slots = copyMixSlots(Config.mix)
-	if not next(slots) then notify("Add at least one animation slot before saving"); return end
-	table.insert(Config.mixProfiles, { name = name, slots = slots })
-	mixProfileNameBox.Text = ""; save(); renderMixProfiles(); notify("Mix saved: " .. name)
+__BA_STATE.mixProfileSaveBtn.MouseButton1Click:Connect(function()
+	local name = (__BA_STATE.mixProfileNameBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then __BA_STATE.notify("Enter a name for this mix first"); return end
+	for _, profile in ipairs(__BA_STATE.Config.mixProfiles) do if string.lower(profile.name) == string.lower(name) then __BA_STATE.notify("That mix name already exists"); return end end
+	local slots = __BA_STATE.copyMixSlots(__BA_STATE.Config.mix)
+	if not next(slots) then __BA_STATE.notify("Add at least one animation slot before saving"); return end
+	table.insert(__BA_STATE.Config.mixProfiles, { name = name, slots = slots })
+	__BA_STATE.mixProfileNameBox.Text = ""; __BA_STATE.save(); __BA_STATE.renderMixProfiles(); __BA_STATE.notify("Mix saved: " .. name)
 end)
 
-for key, button in pairs(profileSubButtons) do button.MouseButton1Click:Connect(function()
-	setProfileMode(key)
-	if key == "emotes" then renderCollectionFolders("emote") elseif key == "packs" then renderCollectionFolders("bundle") elseif key == "mix" then renderMixProfiles() else renderProfiles() end
+for key, button in pairs(__BA_STATE.profileSubButtons) do button.MouseButton1Click:Connect(function()
+	__BA_STATE.setProfileMode(key)
+	if key == "emotes" then __BA_STATE.renderCollectionFolders("emote") elseif key == "packs" then __BA_STATE.renderCollectionFolders("bundle") elseif key == "mix" then __BA_STATE.renderMixProfiles() else __BA_STATE.renderProfiles() end
 end) end
 
 ----------------------------------------------------------------
 -- Busqueda del catalogo mediante AvatarEditorService
 -- Usa la API oficial del cliente de Roblox; no realiza peticiones HTTP externas.
 ----------------------------------------------------------------
-local catalogPages = nil
-local catalogBusy = false
-local catalogToken = 0
-local catalogResults = {}
-local searchCatalog
+__BA_STATE.catalogPages = nil
+__BA_STATE.catalogBusy = false
+__BA_STATE.catalogToken = 0
+__BA_STATE.catalogResults = {}
+__BA_STATE.searchCatalog = nil
 
-local function clearCatalogCards()
-	for _, child in ipairs(CatalogGrid:GetChildren()) do
+function __BA_STATE.clearCatalogCards()
+	for _, child in ipairs(__BA_STATE.CatalogGrid:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
 	end
-	CatalogGrid.CanvasPosition = Vector2.new(0, 0)
+	__BA_STATE.CatalogGrid.CanvasPosition = Vector2.new(0, 0)
 end
 
-local function makeCatalogSearchParams(keyword)
+function __BA_STATE.makeCatalogSearchParams(keyword)
 	local params = CatalogSearchParams.new()
 	params.SearchKeyword = keyword or ""
 	params.Limit = 28
 
-	if catalogKind == "bundle" then
+	if __BA_STATE.catalogKind == "bundle" then
 		local animationBundleType
 		local enumOK = pcall(function()
 			animationBundleType = Enum.BundleType.Animations
@@ -1430,115 +1432,115 @@ local function makeCatalogSearchParams(keyword)
 	return params
 end
 
-local function createCatalogCard(item)
-	local card = new("Frame", {
-		BackgroundColor3 = C.card, BorderSizePixel = 0,
-	}, CatalogGrid)
-	corner(card, 8)
+function __BA_STATE.createCatalogCard(item)
+	local card = __BA_STATE.new("Frame", {
+		BackgroundColor3 = __BA_STATE.C.card, BorderSizePixel = 0,
+	}, __BA_STATE.CatalogGrid)
+	__BA_STATE.corner(card, 8)
 	local thumbType = item.kind == "bundle" and "BundleThumbnail" or "Asset"
-	new("ImageLabel", {
-		BackgroundColor3 = C.thumb, BorderSizePixel = 0,
+	__BA_STATE.new("ImageLabel", {
+		BackgroundColor3 = __BA_STATE.C.thumb, BorderSizePixel = 0,
 		Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -76),
 		ScaleType = Enum.ScaleType.Fit,
 		Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(thumbType, tostring(item.id)),
 	}, card)
-	local name = new("TextLabel", {
+	local name = __BA_STATE.new("TextLabel", {
 		BackgroundTransparency = 1, Position = UDim2.new(0, 7, 1, -68),
 		Size = UDim2.new(1, -14, 0, 30), Font = Enum.Font.GothamBold,
-		TextSize = 11, TextColor3 = C.txt, TextWrapped = true,
+		TextSize = 11, TextColor3 = __BA_STATE.C.txt, TextWrapped = true,
 		TextTruncate = Enum.TextTruncate.AtEnd, Text = item.name or ("Item " .. tostring(item.id)),
 	}, card)
-	local saveBtn = makeButton({ Text = libIndex(item) and "SAVED ✓" or "SAVE", Position = UDim2.new(0, 6, 1, -62), Size = UDim2.new(0.32, -5, 0, 24), TextSize = 9 }, card)
-	local profileBtn = makeButton({ Text = "💾", Position = UDim2.new(0.34, 0, 1, -62), Size = UDim2.new(0.34, -4, 0, 24), TextSize = 12 }, card)
-	local favBtn = makeButton({ Text = favIndex(item) and "★" or "☆", Position = UDim2.new(0.70, 0, 1, -62), Size = UDim2.new(0.30, -6, 0, 24), TextSize = 14, TextColor3 = favIndex(item) and C.gold or C.txt }, card)
-	local useBtn = makeButton({ Text = item.kind == "bundle" and "APPLY" or "PLAY", Position = UDim2.new(0, 6, 1, -32), Size = UDim2.new(1, -12, 0, 26), TextSize = 11, BackgroundColor3 = C.white, TextColor3 = C.black }, card)
+	local saveBtn = __BA_STATE.makeButton({ Text = __BA_STATE.libIndex(item) and "SAVED ✓" or "SAVE", Position = UDim2.new(0, 6, 1, -62), Size = UDim2.new(0.32, -5, 0, 24), TextSize = 9 }, card)
+	local profileBtn = __BA_STATE.makeButton({ Text = "💾", Position = UDim2.new(0.34, 0, 1, -62), Size = UDim2.new(0.34, -4, 0, 24), TextSize = 12 }, card)
+	local favBtn = __BA_STATE.makeButton({ Text = __BA_STATE.favIndex(item) and "★" or "☆", Position = UDim2.new(0.70, 0, 1, -62), Size = UDim2.new(0.30, -6, 0, 24), TextSize = 14, TextColor3 = __BA_STATE.favIndex(item) and __BA_STATE.C.gold or __BA_STATE.C.txt }, card)
+	local useBtn = __BA_STATE.makeButton({ Text = item.kind == "bundle" and "APPLY" or "PLAY", Position = UDim2.new(0, 6, 1, -32), Size = UDim2.new(1, -12, 0, 26), TextSize = 11, BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black }, card)
 	saveBtn.MouseButton1Click:Connect(function()
-		if libIndex(item) then
-			notify("Already saved: " .. item.name)
+		if __BA_STATE.libIndex(item) then
+			__BA_STATE.notify("Already saved: " .. item.name)
 			return
 		end
-		saveItem(item, false)
+		__BA_STATE.saveItem(item, false)
 		saveBtn.Text = "SAVED ✓"
-		notify("Saved: " .. item.name)
+		__BA_STATE.notify("Saved: " .. item.name)
 	end)
-	profileBtn.MouseButton1Click:Connect(function() if openProfilePicker then openProfilePicker(item) end end)
+	profileBtn.MouseButton1Click:Connect(function() if __BA_STATE.openProfilePicker then __BA_STATE.openProfilePicker(item) end end)
 	favBtn.MouseButton1Click:Connect(function()
-		local idx = favIndex(item)
-		if idx then table.remove(Config.favs, idx); favBtn.Text = "☆"; favBtn.TextColor3 = C.txt
-		else saveItem(item, true); favBtn.Text = "★"; favBtn.TextColor3 = C.gold; return end
-		save(); refreshPreviewButtons()
+		local idx = __BA_STATE.favIndex(item)
+		if idx then table.remove(__BA_STATE.Config.favs, idx); favBtn.Text = "☆"; favBtn.TextColor3 = __BA_STATE.C.txt
+		else __BA_STATE.saveItem(item, true); favBtn.Text = "★"; favBtn.TextColor3 = __BA_STATE.C.gold; return end
+		__BA_STATE.save(); __BA_STATE.refreshPreviewButtons()
 	end)
 	useBtn.MouseButton1Click:Connect(function()
 		if item.kind == "bundle" then
-			applyBundle(item, false)
+			__BA_STATE.applyBundle(item, false)
 		else
-			playEmote(item.id, item.name, false, item.img)
+			__BA_STATE.playEmote(item.id, item.name, false, item.img)
 		end
 	end)
 	return card
 end
 
-local function setCatalogKind(kind)
-	catalogKind = kind
-	catalogBusy = false
-	catalogToken += 1
-	catalogPages = nil
-	catalogResults = {}
-	CatalogPackBtn.BackgroundColor3 = kind == "bundle" and C.white or C.btn
-	CatalogPackBtn.TextColor3 = kind == "bundle" and C.black or C.txt
-	CatalogEmoteBtn.BackgroundColor3 = kind == "emote" and C.white or C.btn
-	CatalogEmoteBtn.TextColor3 = kind == "emote" and C.black or C.txt
-	if state.tab == "catalog" then
-		SearchBox.PlaceholderText = kind == "bundle" and "Search animation packs..." or "Search emotes..."
-		searchCatalog(false)
+function __BA_STATE.setCatalogKind(kind)
+	__BA_STATE.catalogKind = kind
+	__BA_STATE.catalogBusy = false
+	__BA_STATE.catalogToken += 1
+	__BA_STATE.catalogPages = nil
+	__BA_STATE.catalogResults = {}
+	__BA_STATE.CatalogPackBtn.BackgroundColor3 = kind == "bundle" and __BA_STATE.C.white or __BA_STATE.C.btn
+	__BA_STATE.CatalogPackBtn.TextColor3 = kind == "bundle" and __BA_STATE.C.black or __BA_STATE.C.txt
+	__BA_STATE.CatalogEmoteBtn.BackgroundColor3 = kind == "emote" and __BA_STATE.C.white or __BA_STATE.C.btn
+	__BA_STATE.CatalogEmoteBtn.TextColor3 = kind == "emote" and __BA_STATE.C.black or __BA_STATE.C.txt
+	if __BA_STATE.state.tab == "catalog" then
+		__BA_STATE.SearchBox.PlaceholderText = kind == "bundle" and "Search animation packs..." or "Search emotes..."
+		__BA_STATE.searchCatalog(false)
 	end
 end
 
-searchCatalog = function(append)
-	if append and catalogBusy then return end
+__BA_STATE.searchCatalog = function(append)
+	if append and __BA_STATE.catalogBusy then return end
 
-	local keyword = (SearchBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local keyword = (__BA_STATE.SearchBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if not append then
-		catalogPages = nil
-		catalogResults = {}
-		clearCatalogCards()
-	elseif not catalogPages then
+		__BA_STATE.catalogPages = nil
+		__BA_STATE.catalogResults = {}
+		__BA_STATE.clearCatalogCards()
+	elseif not __BA_STATE.catalogPages then
 		return
 	end
 
-	catalogBusy = true
-	catalogToken += 1
-	local token = catalogToken
-	CatalogEmpty.Visible = false
-	CatalogMoreBtn.Visible = false
-	notify("Searching Roblox catalog with AvatarEditorService...")
+	__BA_STATE.catalogBusy = true
+	__BA_STATE.catalogToken += 1
+	local token = __BA_STATE.catalogToken
+	__BA_STATE.CatalogEmpty.Visible = false
+	__BA_STATE.CatalogMoreBtn.Visible = false
+	__BA_STATE.notify("Searching Roblox catalog with AvatarEditorService...")
 
 	task.spawn(function()
 		local ok, pageData = pcall(function()
 			local AvatarEditorService = game:GetService("AvatarEditorService")
 
 			if append then
-				if catalogPages.IsFinished then
+				if __BA_STATE.catalogPages.IsFinished then
 					return {}
 				end
-				catalogPages:AdvanceToNextPageAsync()
+				__BA_STATE.catalogPages:AdvanceToNextPageAsync()
 			else
-				local params = makeCatalogSearchParams(keyword)
-				catalogPages = AvatarEditorService:SearchCatalogAsync(params)
+				local params = __BA_STATE.makeCatalogSearchParams(keyword)
+				__BA_STATE.catalogPages = AvatarEditorService:SearchCatalogAsync(params)
 			end
 
-			return catalogPages:GetCurrentPage()
+			return __BA_STATE.catalogPages:GetCurrentPage()
 		end)
 
-		if token ~= catalogToken then return end
-		catalogBusy = false
+		if token ~= __BA_STATE.catalogToken then return end
+		__BA_STATE.catalogBusy = false
 
 		if not ok or type(pageData) ~= "table" then
 			local message = tostring(pageData or "Unknown AvatarEditorService error")
-			CatalogEmpty.Text = "AvatarEditorService search failed:\n" .. message
-			CatalogEmpty.Visible = true
-			CatalogMoreBtn.Visible = false
-			notify("Catalog search failed • see error above")
+			__BA_STATE.CatalogEmpty.Text = "AvatarEditorService search failed:\n" .. message
+			__BA_STATE.CatalogEmpty.Visible = true
+			__BA_STATE.CatalogMoreBtn.Visible = false
+			__BA_STATE.notify("Catalog search failed • see error above")
 			return
 		end
 
@@ -1546,233 +1548,233 @@ searchCatalog = function(append)
 			local id = result.Id or result.id
 			if id then
 				local item = {
-					kind = catalogKind,
+					kind = __BA_STATE.catalogKind,
 					id = tostring(id),
 					name = result.Name or result.name
-						or ((catalogKind == "bundle" and "Animation pack " or "Emote ") .. tostring(id)),
+						or ((__BA_STATE.catalogKind == "bundle" and "Animation pack " or "Emote ") .. tostring(id)),
 					img = ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(
-						catalogKind == "bundle" and "BundleThumbnail" or "Asset",
+						__BA_STATE.catalogKind == "bundle" and "BundleThumbnail" or "Asset",
 						tostring(id)
 					),
 				}
-				table.insert(catalogResults, item)
-				createCatalogCard(item)
+				table.insert(__BA_STATE.catalogResults, item)
+				__BA_STATE.createCatalogCard(item)
 			end
 		end
 
 		local hasMore = false
 		pcall(function()
-			hasMore = catalogPages ~= nil and not catalogPages.IsFinished
+			hasMore = __BA_STATE.catalogPages ~= nil and not __BA_STATE.catalogPages.IsFinished
 		end)
-		CatalogMoreBtn.Visible = hasMore
-		CatalogEmpty.Visible = #catalogResults == 0
-		if #catalogResults == 0 then
-			CatalogEmpty.Text = keyword == ""
+		__BA_STATE.CatalogMoreBtn.Visible = hasMore
+		__BA_STATE.CatalogEmpty.Visible = #__BA_STATE.catalogResults == 0
+		if #__BA_STATE.catalogResults == 0 then
+			__BA_STATE.CatalogEmpty.Text = keyword == ""
 				and "No catalog items found in this category."
 				or "No results. Try another search."
 		end
 		if not append then
-			CatalogGrid.CanvasPosition = Vector2.new(0, 0)
+			__BA_STATE.CatalogGrid.CanvasPosition = Vector2.new(0, 0)
 		end
-		setStatus((catalogKind == "bundle" and "Animation packs" or "Emotes")
-			.. ": " .. tostring(#catalogResults) .. " results")
+		__BA_STATE.setStatus((__BA_STATE.catalogKind == "bundle" and "Animation packs" or "Emotes")
+			.. ": " .. tostring(#__BA_STATE.catalogResults) .. " results")
 	end)
 end
 
-CatalogPackBtn.MouseButton1Click:Connect(function() setCatalogKind("bundle") end)
-CatalogEmoteBtn.MouseButton1Click:Connect(function() setCatalogKind("emote") end)
-CatalogMoreBtn.MouseButton1Click:Connect(function()
-	if catalogPages and not catalogPages.IsFinished then searchCatalog(true) end
+__BA_STATE.CatalogPackBtn.MouseButton1Click:Connect(function() __BA_STATE.setCatalogKind("bundle") end)
+__BA_STATE.CatalogEmoteBtn.MouseButton1Click:Connect(function() __BA_STATE.setCatalogKind("emote") end)
+__BA_STATE.CatalogMoreBtn.MouseButton1Click:Connect(function()
+	if __BA_STATE.catalogPages and not __BA_STATE.catalogPages.IsFinished then __BA_STATE.searchCatalog(true) end
 end)
 
-local function updateTabStyle()
-	for key, b in pairs(tabButtons) do
-		local on = key == state.tab
-		b.BackgroundColor3 = on and C.white or C.btn
-		b.TextColor3 = on and C.black or C.txt
+function __BA_STATE.updateTabStyle()
+	for key, b in pairs(__BA_STATE.tabButtons) do
+		local on = key == __BA_STATE.state.tab
+		b.BackgroundColor3 = on and __BA_STATE.C.white or __BA_STATE.C.btn
+		b.TextColor3 = on and __BA_STATE.C.black or __BA_STATE.C.txt
 	end
 end
 
 -- showTab(nil) vuelve a dibujar la pestana actual
-showTab = function(tab)
+__BA_STATE.showTab = function(tab)
 	local keepScroll = tab == nil
-	tab = tab or state.tab
-	if tab ~= state.tab then state.filter = ""; SearchBox.Text = "" end
-	state.tab = tab
-	updateTabStyle()
+	tab = tab or __BA_STATE.state.tab
+	if tab ~= __BA_STATE.state.tab then __BA_STATE.state.filter = ""; __BA_STATE.SearchBox.Text = "" end
+	__BA_STATE.state.tab = tab
+	__BA_STATE.updateTabStyle()
 	local isMix = tab == "mix"
 	local isProfiles = tab == "profiles"
 	local isCatalog = tab == "catalog"
-	Grid.Visible = not isMix and not isProfiles and not isCatalog
-	MixPage.Visible = isMix
-	ProfilePage.Visible = isProfiles
-	CatalogPage.Visible = isCatalog
-	SearchBox.Visible = not isProfiles and not isMix
-	SearchBtn.Visible = not isProfiles and not isMix
-	IdBox.Visible = not isProfiles and not isMix and not isCatalog
-	ApplyBtn.Visible = not isProfiles and not isMix and not isCatalog
-	EmptyLabel.Visible = false
-	SearchBox.PlaceholderText = isCatalog and (catalogKind == "bundle" and "Search animation packs..." or "Search emotes...") or (tab == "favs" and "Name" or "Zombie, Cute")
-	IdBox.PlaceholderText = "Url or ID"
+	__BA_STATE.Grid.Visible = not isMix and not isProfiles and not isCatalog
+	__BA_STATE.MixPage.Visible = isMix
+	__BA_STATE.ProfilePage.Visible = isProfiles
+	__BA_STATE.CatalogPage.Visible = isCatalog
+	__BA_STATE.SearchBox.Visible = not isProfiles and not isMix
+	__BA_STATE.SearchBtn.Visible = not isProfiles and not isMix
+	__BA_STATE.IdBox.Visible = not isProfiles and not isMix and not isCatalog
+	__BA_STATE.ApplyBtn.Visible = not isProfiles and not isMix and not isCatalog
+	__BA_STATE.EmptyLabel.Visible = false
+	__BA_STATE.SearchBox.PlaceholderText = isCatalog and (__BA_STATE.catalogKind == "bundle" and "Search animation packs..." or "Search emotes...") or (tab == "favs" and "Name" or "Zombie, Cute")
+	__BA_STATE.IdBox.PlaceholderText = "Url or ID"
 	if isProfiles then
-		setProfileMode(profileMode)
-		if profileMode == "hotkeys" then renderProfiles() elseif profileMode == "emotes" then renderCollectionFolders("emote") elseif profileMode == "packs" then renderCollectionFolders("bundle") else renderMixProfiles() end
+		__BA_STATE.setProfileMode(__BA_STATE.profileMode)
+		if __BA_STATE.profileMode == "hotkeys" then __BA_STATE.renderProfiles() elseif __BA_STATE.profileMode == "emotes" then __BA_STATE.renderCollectionFolders("emote") elseif __BA_STATE.profileMode == "packs" then __BA_STATE.renderCollectionFolders("bundle") else __BA_STATE.renderMixProfiles() end
 	elseif isMix then
-		EmptyLabel.Visible = false
+		__BA_STATE.EmptyLabel.Visible = false
 	elseif isCatalog then
-		CatalogEmpty.Visible = #catalogResults == 0
-		CatalogPackBtn.BackgroundColor3 = catalogKind == "bundle" and C.white or C.btn
-		CatalogPackBtn.TextColor3 = catalogKind == "bundle" and C.black or C.txt
-		CatalogEmoteBtn.BackgroundColor3 = catalogKind == "emote" and C.white or C.btn
-		CatalogEmoteBtn.TextColor3 = catalogKind == "emote" and C.black or C.txt
-		if not keepScroll then searchCatalog(false) end
+		__BA_STATE.CatalogEmpty.Visible = #__BA_STATE.catalogResults == 0
+		__BA_STATE.CatalogPackBtn.BackgroundColor3 = __BA_STATE.catalogKind == "bundle" and __BA_STATE.C.white or __BA_STATE.C.btn
+		__BA_STATE.CatalogPackBtn.TextColor3 = __BA_STATE.catalogKind == "bundle" and __BA_STATE.C.black or __BA_STATE.C.txt
+		__BA_STATE.CatalogEmoteBtn.BackgroundColor3 = __BA_STATE.catalogKind == "emote" and __BA_STATE.C.white or __BA_STATE.C.btn
+		__BA_STATE.CatalogEmoteBtn.TextColor3 = __BA_STATE.catalogKind == "emote" and __BA_STATE.C.black or __BA_STATE.C.txt
+		if not keepScroll then __BA_STATE.searchCatalog(false) end
 	else
-		local pos = Grid.CanvasPosition
-		clearCards()
-		relayout()
-		local source = tab == "emotes" and Config.emotes or tab == "bundles" and Config.packs or Config.favs
+		local pos = __BA_STATE.Grid.CanvasPosition
+		__BA_STATE.clearCards()
+		__BA_STATE.relayout()
+		local source = tab == "emotes" and __BA_STATE.Config.emotes or tab == "bundles" and __BA_STATE.Config.packs or __BA_STATE.Config.favs
 		local count = 0
 		for _, it in ipairs(source) do
-			if state.filter == "" or string.find(string.lower(it.name or ""), state.filter, 1, true) then
-				createCard(it).Parent = Grid
+			if __BA_STATE.state.filter == "" or string.find(string.lower(it.name or ""), __BA_STATE.state.filter, 1, true) then
+				__BA_STATE.createCard(it).Parent = __BA_STATE.Grid
 				count += 1
 			end
 		end
-		if keepScroll then Grid.CanvasPosition = pos else Grid.CanvasPosition = Vector2.new(0, 0) end
-		EmptyLabel.Visible = count == 0
+		if keepScroll then __BA_STATE.Grid.CanvasPosition = pos else __BA_STATE.Grid.CanvasPosition = Vector2.new(0, 0) end
+		__BA_STATE.EmptyLabel.Visible = count == 0
 		if count == 0 then
-			if state.filter ~= "" then
-				EmptyLabel.Text = "No results for that name."
+			if __BA_STATE.state.filter ~= "" then
+				__BA_STATE.EmptyLabel.Text = "No results for that name."
 			elseif tab == "emotes" then
-				EmptyLabel.Text = "No saved emotes yet.\nPaste an emote ID or link above, or play an emote in your game and press SAVE."
+				__BA_STATE.EmptyLabel.Text = "No saved emotes yet.\nPaste an emote ID or link above, or play an emote in your game and press SAVE."
 			elseif tab == "bundles" then
-				EmptyLabel.Text = "No saved packs yet.\nPaste an animation pack ID or link above and press APPLY, then SAVE."
+				__BA_STATE.EmptyLabel.Text = "No saved packs yet.\nPaste an animation pack ID or link above and press APPLY, then SAVE."
 			else
-				EmptyLabel.Text = "No favorites yet. Press the star on any emote or pack."
+				__BA_STATE.EmptyLabel.Text = "No favorites yet. Press the star on any emote or pack."
 			end
 		end
 	end
-	setStatus()
+	__BA_STATE.setStatus()
 end
 
-for key, b in pairs(tabButtons) do
-	b.MouseButton1Click:Connect(function() showTab(key) end)
+for key, b in pairs(__BA_STATE.tabButtons) do
+	b.MouseButton1Click:Connect(function() __BA_STATE.showTab(key) end)
 end
 
-local function createProfile()
-	local name = (profileNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
+function __BA_STATE.createProfile()
+	local name = (__BA_STATE.profileNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
 	if name == "" then
-		notify("Enter a profile name first")
+		__BA_STATE.notify("Enter a profile name first")
 		return
 	end
-	local _, existing = findProfile(name)
+	local _, existing = __BA_STATE.findProfile(name)
 	if existing then
-		notify("That profile already exists. Use UPDATE on its row.")
+		__BA_STATE.notify("That profile already exists. Use UPDATE on its row.")
 		return
 	end
-	table.insert(Config.profiles, {
+	table.insert(__BA_STATE.Config.profiles, {
 		name = name,
-		hotkeys = copyHotkeys(Config.hotkeys),
+		hotkeys = __BA_STATE.copyHotkeys(__BA_STATE.Config.hotkeys),
 	})
-	Config.activeProfile = name
-	profileNameBox.Text = ""
-	save()
-	renderProfiles()
-	notify("Profile saved: " .. name)
+	__BA_STATE.Config.activeProfile = name
+	__BA_STATE.profileNameBox.Text = ""
+	__BA_STATE.save()
+	__BA_STATE.renderProfiles()
+	__BA_STATE.notify("Profile saved: " .. name)
 end
-createProfileBtn.MouseButton1Click:Connect(createProfile)
-profileNameBox.FocusLost:Connect(function(enter)
-	if enter then createProfile() end
+__BA_STATE.createProfileBtn.MouseButton1Click:Connect(__BA_STATE.createProfile)
+__BA_STATE.profileNameBox.FocusLost:Connect(function(enter)
+	if enter then __BA_STATE.createProfile() end
 end)
 
-local function doSearch()
-	if state.tab == "mix" then return end
-	if state.tab == "catalog" then
-		searchCatalog(false)
+function __BA_STATE.doSearch()
+	if __BA_STATE.state.tab == "mix" then return end
+	if __BA_STATE.state.tab == "catalog" then
+		__BA_STATE.searchCatalog(false)
 		return
 	end
-	state.filter = string.lower(SearchBox.Text)
-	showTab(nil)
+	__BA_STATE.state.filter = string.lower(__BA_STATE.SearchBox.Text)
+	__BA_STATE.showTab(nil)
 end
-SearchBtn.MouseButton1Click:Connect(doSearch)
-SearchBox.FocusLost:Connect(function(enter) if enter then doSearch() end end)
-connect(SearchBox:GetPropertyChangedSignal("Text"), function()
-	if SearchBox.Text == "" and state.filter ~= "" then doSearch() end
+__BA_STATE.SearchBtn.MouseButton1Click:Connect(__BA_STATE.doSearch)
+__BA_STATE.SearchBox.FocusLost:Connect(function(enter) if enter then __BA_STATE.doSearch() end end)
+__BA_STATE.connect(__BA_STATE.SearchBox:GetPropertyChangedSignal("Text"), function()
+	if __BA_STATE.SearchBox.Text == "" and __BA_STATE.state.filter ~= "" then __BA_STATE.doSearch() end
 end)
 
-local function doApplyId()
-	local text = IdBox.Text
+function __BA_STATE.doApplyId()
+	local text = __BA_STATE.IdBox.Text
 	if text:gsub("%s", "") == "" then return end
-	notify("Looking up...")
+	__BA_STATE.notify("Looking up...")
 	task.spawn(function()
-		local item, err = identify(text, state.tab)
-		if not item then notify(err or "Invalid ID or link"); return end
+		local item, err = __BA_STATE.identify(text, __BA_STATE.state.tab)
+		if not item then __BA_STATE.notify(err or "Invalid ID or link"); return end
 		if item.kind == "bundle" then
-			applyBundle(item, false)
+			__BA_STATE.applyBundle(item, false)
 		else
-			playEmote(item.id, item.name, false)
+			__BA_STATE.playEmote(item.id, item.name, false)
 		end
 	end)
 end
-ApplyBtn.MouseButton1Click:Connect(doApplyId)
-IdBox.FocusLost:Connect(function(enter) if enter then doApplyId() end end)
+__BA_STATE.ApplyBtn.MouseButton1Click:Connect(__BA_STATE.doApplyId)
+__BA_STATE.IdBox.FocusLost:Connect(function(enter) if enter then __BA_STATE.doApplyId() end end)
 
-StopBtn.MouseButton1Click:Connect(function() stopEmote(); notify("Emote stopped") end)
-ResetBtn.MouseButton1Click:Connect(resetAnimations)
+__BA_STATE.StopBtn.MouseButton1Click:Connect(function() __BA_STATE.stopEmote(); __BA_STATE.notify("Emote stopped") end)
+__BA_STATE.ResetBtn.MouseButton1Click:Connect(__BA_STATE.resetAnimations)
 
 ----------------------------------------------------------------
 -- Pestana MIX
 ----------------------------------------------------------------
 do
-	new("TextLabel", {
+	__BA_STATE.new("TextLabel", {
 		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 0, TextWrapped = true,
-		Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left,
 		Text = "Build a custom animation set by assigning different animations to character actions. Example: zombie walk + mage jump. Apply one slot or the full mix, then save it under PROFILES → MIXES.",
-	}, MixPage)
+	}, __BA_STATE.MixPage)
 	local boxes = {}
 	local function applySlot(slot)
-		local id = parseId(boxes[slot].Text)
-		Config.mix[slot] = boxes[slot].Text
-		save()
+		local id = __BA_STATE.parseId(boxes[slot].Text)
+		__BA_STATE.Config.mix[slot] = boxes[slot].Text
+		__BA_STATE.save()
 		if not id then return end
 		task.spawn(function()
-			if applySlots({ [slot] = resolveAnimId(id) }) then notify("Applied " .. slot) end
+			if __BA_STATE.applySlots({ [slot] = __BA_STATE.resolveAnimId(id) }) then __BA_STATE.notify("Applied " .. slot) end
 		end)
 	end
-	for i, slot in ipairs(SLOT_ORDER) do
-		local row = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = i }, MixPage)
-		new("TextLabel", {
+	for i, slot in ipairs(__BA_STATE.SLOT_ORDER) do
+		local row = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = i }, __BA_STATE.MixPage)
+		__BA_STATE.new("TextLabel", {
 			BackgroundTransparency = 1, Size = UDim2.new(0, 70, 1, 0), Text = string.upper(slot),
-			Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left,
 		}, row)
-		local box = makeBox({
-			PlaceholderText = "Url or ID", Text = Config.mix[slot] or "",
+		local box = __BA_STATE.makeBox({
+			PlaceholderText = "Url or ID", Text = __BA_STATE.Config.mix[slot] or "",
 			Position = UDim2.fromOffset(74, 0), Size = UDim2.new(1, -74, 1, 0),
 		}, row)
 		boxes[slot] = box
-		mixInputBoxes[slot] = box
+		__BA_STATE.mixInputBoxes[slot] = box
 		box.FocusLost:Connect(function(enter)
-			Config.mix[slot] = box.Text
-			save()
+			__BA_STATE.Config.mix[slot] = box.Text
+			__BA_STATE.save()
 			if enter then applySlot(slot) end
 		end)
 	end
-	local all = makeButton({
+	local all = __BA_STATE.makeButton({
 		Text = "APPLY ALL", Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 100,
-		BackgroundColor3 = C.white, TextColor3 = C.black,
-	}, MixPage)
+		BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black,
+	}, __BA_STATE.MixPage)
 	all.MouseButton1Click:Connect(function()
 		local combined = {}
-		for _, slot in ipairs(SLOT_ORDER) do
-			local id = parseId(boxes[slot].Text)
-			Config.mix[slot] = boxes[slot].Text
-			if id then combined[slot] = resolveAnimId(id) end
+		for _, slot in ipairs(__BA_STATE.SLOT_ORDER) do
+			local id = __BA_STATE.parseId(boxes[slot].Text)
+			__BA_STATE.Config.mix[slot] = boxes[slot].Text
+			if id then combined[slot] = __BA_STATE.resolveAnimId(id) end
 		end
-		save()
+		__BA_STATE.save()
 		if next(combined) then
-			if applySlots(combined) then notify("Full mix applied") end
+			if __BA_STATE.applySlots(combined) then __BA_STATE.notify("Full mix applied") end
 		else
-			notify("Add at least one valid animation ID")
+			__BA_STATE.notify("Add at least one valid animation ID")
 		end
 	end)
 end
@@ -1780,395 +1782,395 @@ end
 ----------------------------------------------------------------
 -- Ventana de ajustes (aparte)
 ----------------------------------------------------------------
-local Settings = new("Frame", {
-	Name = "Settings", BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false,
+__BA_STATE.Settings = __BA_STATE.new("Frame", {
+	Name = "Settings", BackgroundColor3 = __BA_STATE.C.bg, BorderSizePixel = 0, Visible = false,
 	Size = UDim2.fromOffset(270, 478), Position = UDim2.new(0.5, 320, 0.5, -239),
-}, gui)
-corner(Settings, 10)
-new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, Settings)
+}, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.Settings, 10)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(45, 45, 52), Thickness = 1 }, __BA_STATE.Settings)
 
-local sTitle = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38) }, Settings)
-new("TextLabel", {
+__BA_STATE.sTitle = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38) }, __BA_STATE.Settings)
+__BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -60, 1, 0), Text = "SETTINGS",
-	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Left,
-}, sTitle)
-local sClose = makeButton({ Text = "X", Size = UDim2.fromOffset(26, 24), Position = UDim2.new(1, -36, 0, 7) }, sTitle)
-draggable(sTitle, Settings)
+	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Left,
+}, __BA_STATE.sTitle)
+__BA_STATE.sClose = __BA_STATE.makeButton({ Text = "X", Size = UDim2.fromOffset(26, 24), Position = UDim2.new(1, -36, 0, 7) }, __BA_STATE.sTitle)
+__BA_STATE.draggable(__BA_STATE.sTitle, __BA_STATE.Settings)
 
-new("TextLabel", {
+__BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 42), Size = UDim2.fromOffset(150, 20), Text = "ANIMATION SPEED",
-	Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.dim, TextXAlignment = Enum.TextXAlignment.Left,
-}, Settings)
-local speedLabel = new("TextLabel", {
+	Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextXAlignment = Enum.TextXAlignment.Left,
+}, __BA_STATE.Settings)
+__BA_STATE.speedLabel = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.new(1, -94, 0, 42), Size = UDim2.fromOffset(80, 20), Text = "1.00x",
-	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.txt, TextXAlignment = Enum.TextXAlignment.Right,
-}, Settings)
+	Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = __BA_STATE.C.txt, TextXAlignment = Enum.TextXAlignment.Right,
+}, __BA_STATE.Settings)
 
-local track = new("Frame", {
-	BackgroundColor3 = C.btn, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 74), Size = UDim2.new(1, -28, 0, 6),
-}, Settings)
-corner(track, 3)
-local fill = new("Frame", { BackgroundColor3 = C.white, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, track)
-corner(fill, 3)
-local knob = new("Frame", {
-	BackgroundColor3 = C.white, BorderSizePixel = 0, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5),
+__BA_STATE.track = __BA_STATE.new("Frame", {
+	BackgroundColor3 = __BA_STATE.C.btn, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 74), Size = UDim2.new(1, -28, 0, 6),
+}, __BA_STATE.Settings)
+__BA_STATE.corner(__BA_STATE.track, 3)
+__BA_STATE.fill = __BA_STATE.new("Frame", { BackgroundColor3 = __BA_STATE.C.white, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, __BA_STATE.track)
+__BA_STATE.corner(__BA_STATE.fill, 3)
+__BA_STATE.knob = __BA_STATE.new("Frame", {
+	BackgroundColor3 = __BA_STATE.C.white, BorderSizePixel = 0, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0, 0.5), ZIndex = 2,
-}, track)
-corner(knob, 8)
-local hit = new("TextButton", { BackgroundTransparency = 1, Text = "", Position = UDim2.fromOffset(14, 62), Size = UDim2.new(1, -28, 0, 30), ZIndex = 3 }, Settings)
+}, __BA_STATE.track)
+__BA_STATE.corner(__BA_STATE.knob, 8)
+__BA_STATE.hit = __BA_STATE.new("TextButton", { BackgroundTransparency = 1, Text = "", Position = UDim2.fromOffset(14, 62), Size = UDim2.new(1, -28, 0, 30), ZIndex = 3 }, __BA_STATE.Settings)
 
-local MIN_S, MAX_S = 0.10, 3.00
-local presetBtns = {}
-local function refreshSpeedUI()
-	local v = Config.speed
-	local r = (v - MIN_S) / (MAX_S - MIN_S)
-	fill.Size = UDim2.fromScale(r, 1)
-	knob.Position = UDim2.fromScale(r, 0.5)
-	speedLabel.Text = ("%.2fx"):format(v)
-	for val, b in pairs(presetBtns) do
+__BA_STATE.MIN_S, __BA_STATE.MAX_S = 0.10, 3.00
+__BA_STATE.presetBtns = {}
+function __BA_STATE.refreshSpeedUI()
+	local v = __BA_STATE.Config.speed
+	local r = (v - __BA_STATE.MIN_S) / (__BA_STATE.MAX_S - __BA_STATE.MIN_S)
+	__BA_STATE.fill.Size = UDim2.fromScale(r, 1)
+	__BA_STATE.knob.Position = UDim2.fromScale(r, 0.5)
+	__BA_STATE.speedLabel.Text = ("%.2fx"):format(v)
+	for val, b in pairs(__BA_STATE.presetBtns) do
 		local on = math.abs(val - v) < 0.005
-		b.BackgroundColor3 = on and C.white or C.btn
-		b.TextColor3 = on and C.black or C.txt
+		b.BackgroundColor3 = on and __BA_STATE.C.white or __BA_STATE.C.btn
+		b.TextColor3 = on and __BA_STATE.C.black or __BA_STATE.C.txt
 	end
 end
-local function setSpeed(v)
-	v = math.clamp(math.floor(v * 100 + 0.5) / 100, MIN_S, MAX_S)
-	Config.speed = v
-	refreshSpeedUI()
-	save()
+function __BA_STATE.setSpeed(v)
+	v = math.clamp(math.floor(v * 100 + 0.5) / 100, __BA_STATE.MIN_S, __BA_STATE.MAX_S)
+	__BA_STATE.Config.speed = v
+	__BA_STATE.refreshSpeedUI()
+	__BA_STATE.save()
 end
 
-local sliding = false
-local function slideTo(x)
-	local r = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
-	setSpeed(MIN_S + r * (MAX_S - MIN_S))
+__BA_STATE.sliding = false
+function __BA_STATE.slideTo(x)
+	local r = math.clamp((x - __BA_STATE.track.AbsolutePosition.X) / math.max(1, __BA_STATE.track.AbsoluteSize.X), 0, 1)
+	__BA_STATE.setSpeed(__BA_STATE.MIN_S + r * (__BA_STATE.MAX_S - __BA_STATE.MIN_S))
 end
-connect(hit.InputBegan, function(i)
+__BA_STATE.connect(__BA_STATE.hit.InputBegan, function(i)
 	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		sliding = true
-		slideTo(i.Position.X)
+		__BA_STATE.sliding = true
+		__BA_STATE.slideTo(i.Position.X)
 	end
 end)
-connect(UIS.InputChanged, function(i)
-	if sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-		slideTo(i.Position.X)
+__BA_STATE.connect(__BA_STATE.UIS.InputChanged, function(i)
+	if __BA_STATE.sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+		__BA_STATE.slideTo(i.Position.X)
 	end
 end)
-connect(UIS.InputEnded, function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then sliding = false end
+__BA_STATE.connect(__BA_STATE.UIS.InputEnded, function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then __BA_STATE.sliding = false end
 end)
 
-local presetFrame = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 100), Size = UDim2.new(1, -28, 0, 174) }, Settings)
-new("UIGridLayout", {
+__BA_STATE.presetFrame = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 100), Size = UDim2.new(1, -28, 0, 174) }, __BA_STATE.Settings)
+__BA_STATE.new("UIGridLayout", {
 	CellSize = UDim2.new(0.5, -4, 0, 30), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder,
-}, presetFrame)
+}, __BA_STATE.presetFrame)
 for i, v in ipairs({ 0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00 }) do
-	local b = makeButton({ Text = ("%.2fx"):format(v), LayoutOrder = i }, presetFrame)
-	presetBtns[v] = b
-	b.MouseButton1Click:Connect(function() setSpeed(v) end)
+	local b = __BA_STATE.makeButton({ Text = ("%.2fx"):format(v), LayoutOrder = i }, __BA_STATE.presetFrame)
+	__BA_STATE.presetBtns[v] = b
+	b.MouseButton1Click:Connect(function() __BA_STATE.setSpeed(v) end)
 end
 
-local settingsRefreshers = {}
-local function toggleButton(y, label, getter, setter)
-	local b = makeButton({ Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12 }, Settings)
+__BA_STATE.settingsRefreshers = {}
+function __BA_STATE.toggleButton(y, label, getter, setter)
+	local b = __BA_STATE.makeButton({ Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12 }, __BA_STATE.Settings)
 	local function refresh()
 		local on = getter()
 		b.Text = label .. ": " .. (on and "ON" or "OFF")
-		b.BackgroundColor3 = on and C.white or C.btn
-		b.TextColor3 = on and C.black or C.txt
+		b.BackgroundColor3 = on and __BA_STATE.C.white or __BA_STATE.C.btn
+		b.TextColor3 = on and __BA_STATE.C.black or __BA_STATE.C.txt
 	end
 	b.MouseButton1Click:Connect(function()
 		setter(not getter())
 		refresh()
-		save()
+		__BA_STATE.save()
 	end)
 	refresh()
-	table.insert(settingsRefreshers, refresh)
+	table.insert(__BA_STATE.settingsRefreshers, refresh)
 end
-toggleButton(288, "Keep emote while moving", function() return Config.keepEmote end, function(v) Config.keepEmote = v end)
-toggleButton(332, "Detect game emotes", function() return Config.detect end, function(v) Config.detect = v end)
+__BA_STATE.toggleButton(288, "Keep emote while moving", function() return __BA_STATE.Config.keepEmote end, function(v) __BA_STATE.Config.keepEmote = v end)
+__BA_STATE.toggleButton(332, "Detect game emotes", function() return __BA_STATE.Config.detect end, function(v) __BA_STATE.Config.detect = v end)
 
-local keyBtn = makeButton({
+__BA_STATE.keyBtn = __BA_STATE.makeButton({
 	Position = UDim2.fromOffset(14, 376), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12,
-}, Settings)
-local function refreshKey() keyBtn.Text = "Menu key: " .. Config.menuKey end
-keyBtn.MouseButton1Click:Connect(function()
-	keyBtn.Text = "Press a key..."
-	capture = function(kc)
+}, __BA_STATE.Settings)
+function __BA_STATE.refreshKey() keyBtn.Text = "Menu key: " .. Config.menuKey end
+__BA_STATE.keyBtn.MouseButton1Click:Connect(function()
+	__BA_STATE.keyBtn.Text = "Press a key..."
+	__BA_STATE.capture = function(kc)
 		if kc ~= Enum.KeyCode.Escape then
-			Config.menuKey = kc.Name
-			save()
+			__BA_STATE.Config.menuKey = kc.Name
+			__BA_STATE.save()
 		end
-		refreshKey()
+		__BA_STATE.refreshKey()
 	end
 end)
 
-refreshSpeedUI()
-refreshKey()
+__BA_STATE.refreshSpeedUI()
+__BA_STATE.refreshKey()
 
 -- Restablece solamente ajustes y atajos activos. No toca emotes, packs,
 -- favoritos ni perfiles guardados.
-local ResetConfigBtn = makeButton({
+__BA_STATE.ResetConfigBtn = __BA_STATE.makeButton({
 	Text = "RESET CONFIGURATION", Position = UDim2.fromOffset(14, 420),
 	Size = UDim2.new(1, -28, 0, 34),
 	BackgroundColor3 = Color3.fromRGB(105, 42, 42),
-	TextColor3 = C.white, TextSize = 11,
-}, Settings)
-ResetConfigBtn.MouseButton1Click:Connect(function()
-	Config.menuKey = "RightControl"
-	Config.speed = 1
-	Config.keepEmote = false
-	Config.detect = true
-	Config.hotkeys = {}
-	Config.activeProfile = ""
-	refreshSpeedUI()
-	refreshKey()
-	for _, refresh in ipairs(settingsRefreshers) do refresh() end
-	save()
-	if state.tab == "profiles" then renderProfiles() end
-	showTab(nil)
-	notify("Settings and active hotkeys reset. Saved library and profiles kept.")
+	TextColor3 = __BA_STATE.C.white, TextSize = 11,
+}, __BA_STATE.Settings)
+__BA_STATE.ResetConfigBtn.MouseButton1Click:Connect(function()
+	__BA_STATE.Config.menuKey = "RightControl"
+	__BA_STATE.Config.speed = 1
+	__BA_STATE.Config.keepEmote = false
+	__BA_STATE.Config.detect = true
+	__BA_STATE.Config.hotkeys = {}
+	__BA_STATE.Config.activeProfile = ""
+	__BA_STATE.refreshSpeedUI()
+	__BA_STATE.refreshKey()
+	for _, refresh in ipairs(__BA_STATE.settingsRefreshers) do refresh() end
+	__BA_STATE.save()
+	if __BA_STATE.state.tab == "profiles" then __BA_STATE.renderProfiles() end
+	__BA_STATE.showTab(nil)
+	__BA_STATE.notify("Settings and active hotkeys reset. Saved library and profiles kept.")
 end)
 
-GearBtn.MouseButton1Click:Connect(function() Settings.Visible = not Settings.Visible end)
-sClose.MouseButton1Click:Connect(function() Settings.Visible = false end)
+__BA_STATE.GearBtn.MouseButton1Click:Connect(function() __BA_STATE.Settings.Visible = not __BA_STATE.Settings.Visible end)
+__BA_STATE.sClose.MouseButton1Click:Connect(function() __BA_STATE.Settings.Visible = false end)
 
 ----------------------------------------------------------------
 -- Mini ventana "SAVE" (emote o pack detectado / pegado)
 ----------------------------------------------------------------
-local Preview = new("Frame", {
-	Name = "Preview", BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = false,
+__BA_STATE.Preview = __BA_STATE.new("Frame", {
+	Name = "Preview", BackgroundColor3 = __BA_STATE.C.bg, BorderSizePixel = 0, Visible = false,
 	Size = UDim2.fromOffset(290, 152), Position = UDim2.new(0.5, -145, 1, -190),
-}, gui)
-corner(Preview, 10)
-new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, Preview)
+}, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.Preview, 10)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(70, 70, 80), Thickness = 1 }, __BA_STATE.Preview)
 
-local pBar = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30) }, Preview)
-local pHead = new("TextLabel", {
+__BA_STATE.pBar = __BA_STATE.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30) }, __BA_STATE.Preview)
+__BA_STATE.pHead = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -50, 1, 0), Text = "",
-	Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.gold, TextXAlignment = Enum.TextXAlignment.Left,
-}, pBar)
-local pClose = makeButton({ Text = "✕", Size = UDim2.fromOffset(24, 22), Position = UDim2.new(1, -32, 0, 4) }, pBar)
-draggable(pBar, Preview)
+	Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = __BA_STATE.C.gold, TextXAlignment = Enum.TextXAlignment.Left,
+}, __BA_STATE.pBar)
+__BA_STATE.pClose = __BA_STATE.makeButton({ Text = "✕", Size = UDim2.fromOffset(24, 22), Position = UDim2.new(1, -32, 0, 4) }, __BA_STATE.pBar)
+__BA_STATE.draggable(__BA_STATE.pBar, __BA_STATE.Preview)
 
-local pThumb = new("ImageLabel", {
-	BackgroundColor3 = C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 36), Size = UDim2.fromOffset(64, 64),
+__BA_STATE.pThumb = __BA_STATE.new("ImageLabel", {
+	BackgroundColor3 = __BA_STATE.C.thumb, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 36), Size = UDim2.fromOffset(64, 64),
 	ScaleType = Enum.ScaleType.Fit,
-}, Preview)
-corner(pThumb, 6)
-local pName = makeBox({
+}, __BA_STATE.Preview)
+__BA_STATE.corner(__BA_STATE.pThumb, 6)
+__BA_STATE.pName = __BA_STATE.makeBox({
 	PlaceholderText = "Name", Text = "", Position = UDim2.fromOffset(86, 36), Size = UDim2.new(1, -98, 0, 28),
-}, Preview)
-local pInfo = new("TextLabel", {
+}, __BA_STATE.Preview)
+__BA_STATE.pInfo = __BA_STATE.new("TextLabel", {
 	BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 68), Size = UDim2.new(1, -98, 0, 34), Text = "",
-	Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, TextWrapped = true,
+	Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim, TextWrapped = true,
 	TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
-}, Preview)
-local pFav = makeButton({ Text = "☆", Position = UDim2.fromOffset(12, 110), Size = UDim2.fromOffset(72, 30) }, Preview)
-local pProfile = makeButton({ Text = "💾 PROFILE", Position = UDim2.fromOffset(90, 110), Size = UDim2.fromOffset(104, 30), TextSize = 10 }, Preview)
-local pSave = makeButton({
+}, __BA_STATE.Preview)
+__BA_STATE.pFav = __BA_STATE.makeButton({ Text = "☆", Position = UDim2.fromOffset(12, 110), Size = UDim2.fromOffset(72, 30) }, __BA_STATE.Preview)
+__BA_STATE.pProfile = __BA_STATE.makeButton({ Text = "💾 PROFILE", Position = UDim2.fromOffset(90, 110), Size = UDim2.fromOffset(104, 30), TextSize = 10 }, __BA_STATE.Preview)
+__BA_STATE.pSave = __BA_STATE.makeButton({
 	Text = "SAVE", Position = UDim2.new(1, -84, 0, 110), Size = UDim2.fromOffset(72, 30),
-	BackgroundColor3 = C.white, TextColor3 = C.black,
-}, Preview)
+	BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black,
+}, __BA_STATE.Preview)
 
-local previewItem = nil
-local previewToken = 0
+__BA_STATE.previewItem = nil
+__BA_STATE.previewToken = 0
 
-refreshPreviewButtons = function()
-	if not previewItem then return end
-	local saved = libIndex(previewItem) ~= nil
-	local fav = favIndex(previewItem) ~= nil
-	pSave.Text = saved and "SAVED ✓" or "SAVE"
-	pSave.BackgroundColor3 = saved and C.btn or C.white
-	pSave.TextColor3 = saved and C.txt or C.black
-	pFav.Text = fav and "★" or "☆"
-	pFav.TextColor3 = fav and C.gold or C.txt
+__BA_STATE.refreshPreviewButtons = function()
+	if not __BA_STATE.previewItem then return end
+	local saved = __BA_STATE.libIndex(__BA_STATE.previewItem) ~= nil
+	local fav = __BA_STATE.favIndex(__BA_STATE.previewItem) ~= nil
+	__BA_STATE.pSave.Text = saved and "SAVED ✓" or "SAVE"
+	__BA_STATE.pSave.BackgroundColor3 = saved and __BA_STATE.C.btn or __BA_STATE.C.white
+	__BA_STATE.pSave.TextColor3 = saved and __BA_STATE.C.txt or __BA_STATE.C.black
+	__BA_STATE.pFav.Text = fav and "★" or "☆"
+	__BA_STATE.pFav.TextColor3 = fav and __BA_STATE.C.gold or __BA_STATE.C.txt
 end
 
-local function currentPreviewName()
-	local nm = (pName.Text:gsub("^%s+", ""))
+function __BA_STATE.currentPreviewName()
+	local nm = (__BA_STATE.pName.Text:gsub("^%s+", ""))
 	nm = (nm:gsub("%s+$", ""))
-	if nm == "" then nm = previewItem.name end
-	previewItem.name = nm
+	if nm == "" then nm = __BA_STATE.previewItem.name end
+	__BA_STATE.previewItem.name = nm
 	return nm
 end
 
-showPreview = function(item, header, extra, autoHide)
-	previewItem = { kind = item.kind, id = tostring(item.id), name = item.name, img = item.img }
-	previewToken += 1
-	local tk = previewToken
-	pHead.Text = header
-	pName.Text = item.name or ""
-	pInfo.Text = "ID: " .. tostring(item.id) .. ((extra and extra ~= "") and ("\n" .. extra) or "")
-	pThumb.Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(item.kind == "bundle" and "BundleThumbnail" or "Asset", tostring(item.id))
-	Preview.Visible = true
-	refreshPreviewButtons()
+__BA_STATE.showPreview = function(item, header, extra, autoHide)
+	__BA_STATE.previewItem = { kind = item.kind, id = tostring(item.id), name = item.name, img = item.img }
+	__BA_STATE.previewToken += 1
+	local tk = __BA_STATE.previewToken
+	__BA_STATE.pHead.Text = header
+	__BA_STATE.pName.Text = item.name or ""
+	__BA_STATE.pInfo.Text = "ID: " .. tostring(item.id) .. ((extra and extra ~= "") and ("\n" .. extra) or "")
+	__BA_STATE.pThumb.Image = item.img or ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(item.kind == "bundle" and "BundleThumbnail" or "Asset", tostring(item.id))
+	__BA_STATE.Preview.Visible = true
+	__BA_STATE.refreshPreviewButtons()
 	if autoHide then
 		task.delay(autoHide, function()
-			if tk == previewToken then Preview.Visible = false end
+			if tk == __BA_STATE.previewToken then __BA_STATE.Preview.Visible = false end
 		end)
 	end
 end
 
-pClose.MouseButton1Click:Connect(function() Preview.Visible = false; previewToken += 1 end)
-pSave.MouseButton1Click:Connect(function()
-	if not previewItem or libIndex(previewItem) then return end
-	previewToken += 1 -- cancela el cierre automatico
-	currentPreviewName()
-	saveItem(previewItem, false)
-	notify("Saved: " .. previewItem.name)
-	Preview.Visible = false
+__BA_STATE.pClose.MouseButton1Click:Connect(function() __BA_STATE.Preview.Visible = false; __BA_STATE.previewToken += 1 end)
+__BA_STATE.pSave.MouseButton1Click:Connect(function()
+	if not __BA_STATE.previewItem or __BA_STATE.libIndex(__BA_STATE.previewItem) then return end
+	__BA_STATE.previewToken += 1 -- cancela el cierre automatico
+	__BA_STATE.currentPreviewName()
+	__BA_STATE.saveItem(__BA_STATE.previewItem, false)
+	__BA_STATE.notify("Saved: " .. previewItem.name)
+	__BA_STATE.Preview.Visible = false
 end)
-pProfile.MouseButton1Click:Connect(function()
-	if not previewItem then return end
-	previewToken += 1
-	currentPreviewName()
-	openProfilePicker(previewItem)
-	Preview.Visible = false
+__BA_STATE.pProfile.MouseButton1Click:Connect(function()
+	if not __BA_STATE.previewItem then return end
+	__BA_STATE.previewToken += 1
+	__BA_STATE.currentPreviewName()
+	__BA_STATE.openProfilePicker(__BA_STATE.previewItem)
+	__BA_STATE.Preview.Visible = false
 end)
-pFav.MouseButton1Click:Connect(function()
-	if not previewItem then return end
-	previewToken += 1
-	local fi = favIndex(previewItem)
+__BA_STATE.pFav.MouseButton1Click:Connect(function()
+	if not __BA_STATE.previewItem then return end
+	__BA_STATE.previewToken += 1
+	local fi = __BA_STATE.favIndex(__BA_STATE.previewItem)
 	if fi then
-		table.remove(Config.favs, fi)
-		save()
-		refreshPreviewButtons()
-		if state.tab == "favs" then showTab(nil) end
+		table.remove(__BA_STATE.Config.favs, fi)
+		__BA_STATE.save()
+		__BA_STATE.refreshPreviewButtons()
+		if __BA_STATE.state.tab == "favs" then __BA_STATE.showTab(nil) end
 	else
-		currentPreviewName()
-		saveItem(previewItem, true)
-		notify("Saved to favorites: " .. previewItem.name)
-		Preview.Visible = false
+		__BA_STATE.currentPreviewName()
+		__BA_STATE.saveItem(__BA_STATE.previewItem, true)
+		__BA_STATE.notify("Saved to favorites: " .. previewItem.name)
+		__BA_STATE.Preview.Visible = false
 	end
 end)
-pName.FocusLost:Connect(function()
-	if not previewItem then return end
-	previewToken += 1
-	local nm = currentPreviewName()
-	local i = libIndex(previewItem)
-	if i then libList(previewItem.kind)[i].name = nm end
-	local fi = favIndex(previewItem)
-	if fi then Config.favs[fi].name = nm end
+__BA_STATE.pName.FocusLost:Connect(function()
+	if not __BA_STATE.previewItem then return end
+	__BA_STATE.previewToken += 1
+	local nm = __BA_STATE.currentPreviewName()
+	local i = __BA_STATE.libIndex(__BA_STATE.previewItem)
+	if i then __BA_STATE.libList(__BA_STATE.previewItem.kind)[i].name = nm end
+	local fi = __BA_STATE.favIndex(__BA_STATE.previewItem)
+	if fi then __BA_STATE.Config.favs[fi].name = nm end
 	if i or fi then
-		save()
-		showTab(nil)
+		__BA_STATE.save()
+		__BA_STATE.showTab(nil)
 	end
 end)
 
-local pickerItem = nil
-local function clearPickerRows() for _, child in ipairs(PickerList:GetChildren()) do if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end end end
-openProfilePicker = function(item)
-	pickerItem = { kind = item.kind, id = tostring(item.id), name = item.name, img = item.img }
+__BA_STATE.pickerItem = nil
+function __BA_STATE.clearPickerRows() for _, child in ipairs(PickerList:GetChildren()) do if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end end end
+__BA_STATE.openProfilePicker = function(item)
+	__BA_STATE.pickerItem = { kind = item.kind, id = tostring(item.id), name = item.name, img = item.img }
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
 	local pickerW = math.min(300, math.max(240, viewport.X - 24))
 	local pickerH = math.min(300, math.max(220, viewport.Y - 40))
-	ProfilePicker.Size = UDim2.fromOffset(pickerW, pickerH)
-	ProfilePicker.Position = UDim2.new(0.5, -pickerW / 2, 0.5, -pickerH / 2)
-	clearPickerRows()
-	local folders = collectionProfiles(item.kind)
+	__BA_STATE.ProfilePicker.Size = UDim2.fromOffset(pickerW, pickerH)
+	__BA_STATE.ProfilePicker.Position = UDim2.new(0.5, -pickerW / 2, 0.5, -pickerH / 2)
+	__BA_STATE.clearPickerRows()
+	local folders = __BA_STATE.collectionProfiles(item.kind)
 	for index, folder in ipairs(folders) do
-		local b = makeButton({ Text = folder.name, Size = UDim2.new(1, -4, 0, 34), LayoutOrder = index, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 32 }, PickerList)
+		local b = __BA_STATE.makeButton({ Text = folder.name, Size = UDim2.new(1, -4, 0, 34), LayoutOrder = index, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 32 }, __BA_STATE.PickerList)
 		b.MouseButton1Click:Connect(function()
-			if addItemToCollection(item.kind, folder.name, pickerItem) then
-				ProfilePicker.Visible = false
-				if item.kind == "bundle" then renderCollectionFolders("bundle") else renderCollectionFolders("emote") end
-				notify("Added to " .. folder.name)
+			if __BA_STATE.addItemToCollection(item.kind, folder.name, __BA_STATE.pickerItem) then
+				__BA_STATE.ProfilePicker.Visible = false
+				if item.kind == "bundle" then __BA_STATE.renderCollectionFolders("bundle") else __BA_STATE.renderCollectionFolders("emote") end
+				__BA_STATE.notify("Added to " .. folder.name)
 			end
 		end)
 	end
-	if #folders == 0 then new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -4, 0, 48), Text = "Create a folder first in PROFILES → " .. (item.kind == "bundle" and "ANIM. PACKS" or "EMOTES"), TextWrapped = true, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.dim, ZIndex = 32 }, PickerList) end
-	ProfilePicker.Visible = true
+	if #folders == 0 then __BA_STATE.new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -4, 0, 48), Text = "Create a folder first in PROFILES → " .. (item.kind == "bundle" and "ANIM. PACKS" or "EMOTES"), TextWrapped = true, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = __BA_STATE.C.dim, ZIndex = 32 }, __BA_STATE.PickerList) end
+	__BA_STATE.ProfilePicker.Visible = true
 end
-PickerCancel.MouseButton1Click:Connect(function() ProfilePicker.Visible = false; pickerItem = nil end)
+__BA_STATE.PickerCancel.MouseButton1Click:Connect(function() __BA_STATE.ProfilePicker.Visible = false; __BA_STATE.pickerItem = nil end)
 
-local renameTarget = nil
-openRenameItem = function(item)
-	renameTarget = item
+__BA_STATE.renameTarget = nil
+__BA_STATE.openRenameItem = function(item)
+	__BA_STATE.renameTarget = item
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
 	local renameW = math.min(300, math.max(240, viewport.X - 24))
-	RenamePopup.Size = UDim2.fromOffset(renameW, 142)
-	RenamePopup.Position = UDim2.new(0.5, -renameW / 2, 0.5, -71)
-	RenameBox.Text = item.name or ""
-	RenamePopup.Visible = true
-	RenameBox:CaptureFocus()
+	__BA_STATE.RenamePopup.Size = UDim2.fromOffset(renameW, 142)
+	__BA_STATE.RenamePopup.Position = UDim2.new(0.5, -renameW / 2, 0.5, -71)
+	__BA_STATE.RenameBox.Text = item.name or ""
+	__BA_STATE.RenamePopup.Visible = true
+	__BA_STATE.RenameBox:CaptureFocus()
 end
-RenameCancel.MouseButton1Click:Connect(function() RenamePopup.Visible = false; renameTarget = nil end)
-RenameSave.MouseButton1Click:Connect(function()
-	if not renameTarget then return end
-	local name = (RenameBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-	if name == "" then notify("Name cannot be empty"); return end
-	local target = renameTarget
-	local i = libIndex(target); if i then libList(target.kind)[i].name = name end
-	local fi = favIndex(target); if fi then Config.favs[fi].name = name end
-	for _, folder in ipairs(collectionProfiles(target.kind)) do for _, saved in ipairs(folder.items or {}) do if tostring(saved.id) == tostring(target.id) then saved.name = name end end end
-	save(); RenamePopup.Visible = false; renameTarget = nil; showTab(nil); notify("Name updated")
+__BA_STATE.RenameCancel.MouseButton1Click:Connect(function() __BA_STATE.RenamePopup.Visible = false; __BA_STATE.renameTarget = nil end)
+__BA_STATE.RenameSave.MouseButton1Click:Connect(function()
+	if not __BA_STATE.renameTarget then return end
+	local name = (__BA_STATE.RenameBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then __BA_STATE.notify("Name cannot be empty"); return end
+	local target = __BA_STATE.renameTarget
+	local i = __BA_STATE.libIndex(target); if i then __BA_STATE.libList(target.kind)[i].name = name end
+	local fi = __BA_STATE.favIndex(target); if fi then __BA_STATE.Config.favs[fi].name = name end
+	for _, folder in ipairs(__BA_STATE.collectionProfiles(target.kind)) do for _, saved in ipairs(folder.items or {}) do if tostring(saved.id) == tostring(target.id) then saved.name = name end end end
+	__BA_STATE.save(); __BA_STATE.RenamePopup.Visible = false; __BA_STATE.renameTarget = nil; __BA_STATE.showTab(nil); __BA_STATE.notify("Name updated")
 end)
 
 ----------------------------------------------------------------
 -- Minimizar / cerrar / redimensionar
 ----------------------------------------------------------------
-local FloatingK24 = makeButton({ Text = "K24", TextSize = 13, Size = UDim2.fromOffset(58, 42), Position = UDim2.new(0.5, -29, 0.5, -21), BackgroundColor3 = C.white, TextColor3 = C.black, ZIndex = 100 }, gui)
-corner(FloatingK24, 12)
-new("UIStroke", { Color = Color3.fromRGB(90, 90, 110), Thickness = 1 }, FloatingK24)
-FloatingK24.Visible = false
-local floatingDragging = false
-local floatingMoved = false
-local floatingStart = nil
-local floatingStartPos = nil
-connect(FloatingK24.InputBegan, function(input)
+__BA_STATE.FloatingK24 = __BA_STATE.makeButton({ Text = "K24", TextSize = 13, Size = UDim2.fromOffset(58, 42), Position = UDim2.new(0.5, -29, 0.5, -21), BackgroundColor3 = __BA_STATE.C.white, TextColor3 = __BA_STATE.C.black, ZIndex = 100 }, __BA_STATE.gui)
+__BA_STATE.corner(__BA_STATE.FloatingK24, 12)
+__BA_STATE.new("UIStroke", { Color = Color3.fromRGB(90, 90, 110), Thickness = 1 }, __BA_STATE.FloatingK24)
+__BA_STATE.FloatingK24.Visible = false
+__BA_STATE.floatingDragging = false
+__BA_STATE.floatingMoved = false
+__BA_STATE.floatingStart = nil
+__BA_STATE.floatingStartPos = nil
+__BA_STATE.connect(__BA_STATE.FloatingK24.InputBegan, function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		floatingDragging = true
-		floatingMoved = false
-		floatingStart = input.Position
-		floatingStartPos = FloatingK24.AbsolutePosition
+		__BA_STATE.floatingDragging = true
+		__BA_STATE.floatingMoved = false
+		__BA_STATE.floatingStart = input.Position
+		__BA_STATE.floatingStartPos = __BA_STATE.FloatingK24.AbsolutePosition
 	end
 end)
-connect(UIS.InputChanged, function(input)
-	if not floatingDragging then return end
+__BA_STATE.connect(__BA_STATE.UIS.InputChanged, function(input)
+	if not __BA_STATE.floatingDragging then return end
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		local delta = input.Position - floatingStart
-		if math.abs(delta.X) + math.abs(delta.Y) > 7 then floatingMoved = true end
-		if floatingMoved then
+		local delta = input.Position - __BA_STATE.floatingStart
+		if math.abs(delta.X) + math.abs(delta.Y) > 7 then __BA_STATE.floatingMoved = true end
+		if __BA_STATE.floatingMoved then
 			local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-			local x = math.clamp(floatingStartPos.X + delta.X, 0, math.max(0, viewport.X - FloatingK24.AbsoluteSize.X))
-			local y = math.clamp(floatingStartPos.Y + delta.Y, 0, math.max(0, viewport.Y - FloatingK24.AbsoluteSize.Y))
-			FloatingK24.Position = UDim2.fromOffset(x, y)
+			local x = math.clamp(__BA_STATE.floatingStartPos.X + delta.X, 0, math.max(0, viewport.X - __BA_STATE.FloatingK24.AbsoluteSize.X))
+			local y = math.clamp(__BA_STATE.floatingStartPos.Y + delta.Y, 0, math.max(0, viewport.Y - __BA_STATE.FloatingK24.AbsoluteSize.Y))
+			__BA_STATE.FloatingK24.Position = UDim2.fromOffset(x, y)
 		end
 	end
 end)
-connect(UIS.InputEnded, function(input)
-	if floatingDragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-		floatingDragging = false
+__BA_STATE.connect(__BA_STATE.UIS.InputEnded, function(input)
+	if __BA_STATE.floatingDragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		__BA_STATE.floatingDragging = false
 	end
 end)
-FloatingK24.MouseButton1Click:Connect(function()
-	if floatingMoved then floatingMoved = false; return end
-	Main.Visible = not Main.Visible
-	FloatingK24.Visible = not Main.Visible
+__BA_STATE.FloatingK24.MouseButton1Click:Connect(function()
+	if __BA_STATE.floatingMoved then __BA_STATE.floatingMoved = false; return end
+	__BA_STATE.Main.Visible = not __BA_STATE.Main.Visible
+	__BA_STATE.FloatingK24.Visible = not __BA_STATE.Main.Visible
 end)
-MinBtn.MouseButton1Click:Connect(function() Main.Visible = false; FloatingK24.Visible = true end)
-CloseBtn.MouseButton1Click:Connect(function() Main.Visible = false; FloatingK24.Visible = true end)
+__BA_STATE.MinBtn.MouseButton1Click:Connect(function() __BA_STATE.Main.Visible = false; __BA_STATE.FloatingK24.Visible = true end)
+__BA_STATE.CloseBtn.MouseButton1Click:Connect(function() __BA_STATE.Main.Visible = false; __BA_STATE.FloatingK24.Visible = true end)
 
-local function unload()
-	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-	conns = {}
-	pcall(resetAnimations)
-	pcall(function() gui:Destroy() end)
+function __BA_STATE.unload()
+	for _, c in ipairs(__BA_STATE.conns) do pcall(function() c:Disconnect() end) end
+	__BA_STATE.conns = {}
+	pcall(__BA_STATE.resetAnimations)
+	pcall(function() __BA_STATE.gui:Destroy() end)
 	if getgenv then getgenv().__BA_UNLOAD = nil end
 end
-if getgenv then getgenv().__BA_UNLOAD = unload end
+if getgenv then getgenv().__BA_UNLOAD = __BA_STATE.unload end
 
 do
 	local resizing, startMouse, startSize = false, nil, nil
-	connect(Grip.InputBegan, function(i)
+	__BA_STATE.connect(__BA_STATE.Grip.InputBegan, function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 			resizing = true
 			startMouse = i.Position
-			startSize = Main.AbsoluteSize
+			startSize = __BA_STATE.Main.AbsoluteSize
 		end
 	end)
-	connect(UIS.InputChanged, function(i)
+	__BA_STATE.connect(__BA_STATE.UIS.InputChanged, function(i)
 		if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 			local d = i.Position - startMouse
 			local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
@@ -2176,14 +2178,14 @@ do
 			local minH = math.min(320, math.max(260, viewport.Y - 24))
 			local w = math.clamp(startSize.X + d.X, minW, math.min(1000, viewport.X - 16))
 			local h = math.clamp(startSize.Y + d.Y, minH, math.min(800, viewport.Y - 16))
-			Main.Size = UDim2.fromOffset(w, h)
+			__BA_STATE.Main.Size = UDim2.fromOffset(w, h)
 		end
 	end)
-	connect(UIS.InputEnded, function(i)
+	__BA_STATE.connect(__BA_STATE.UIS.InputEnded, function(i)
 		if resizing and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
 			resizing = false
-			Config.w, Config.h = math.floor(Main.AbsoluteSize.X), math.floor(Main.AbsoluteSize.Y)
-			save()
+			__BA_STATE.Config.w, __BA_STATE.Config.h = math.floor(__BA_STATE.Main.AbsoluteSize.X), math.floor(__BA_STATE.Main.AbsoluteSize.Y)
+			__BA_STATE.save()
 		end
 	end)
 end
@@ -2191,26 +2193,26 @@ end
 ----------------------------------------------------------------
 -- Teclado: captura, tecla del menu y atajos
 ----------------------------------------------------------------
-connect(UIS.InputBegan, function(input, processed)
+__BA_STATE.connect(__BA_STATE.UIS.InputBegan, function(input, processed)
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-	if capture then
+	if __BA_STATE.capture then
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			local f = capture
-			capture = nil
+			local f = __BA_STATE.capture
+			__BA_STATE.capture = nil
 			f(input.KeyCode)
 		end
 		return
 	end
 	if processed then return end
 	local name = input.KeyCode.Name
-	if name == Config.menuKey then
-		Main.Visible = not Main.Visible
-		FloatingK24.Visible = not Main.Visible
+	if name == __BA_STATE.Config.menuKey then
+		__BA_STATE.Main.Visible = not __BA_STATE.Main.Visible
+		__BA_STATE.FloatingK24.Visible = not __BA_STATE.Main.Visible
 		return
 	end
-	for _, e in pairs(Config.hotkeys) do
+	for _, e in pairs(__BA_STATE.Config.hotkeys) do
 		if e.key == name then
-			activate(e)
+			__BA_STATE.activate(e)
 			break
 		end
 	end
@@ -2219,5 +2221,5 @@ end)
 ----------------------------------------------------------------
 -- Inicio
 ----------------------------------------------------------------
-showTab("emotes")
-notify("Loaded. Menu key: " .. Config.menuKey)
+__BA_STATE.showTab("emotes")
+__BA_STATE.notify("Loaded. Menu key: " .. Config.menuKey)
