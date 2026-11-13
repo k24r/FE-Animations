@@ -215,7 +215,7 @@ __BA_STATE.refreshChar()
 __BA_STATE.notify, __BA_STATE.showPreview, __BA_STATE.showTab, __BA_STATE.refreshPreviewButtons = nil -- se definen mas abajo
 
 __BA_STATE.ourTracks = setmetatable({}, { __mode = "k" })  -- tracks creados por este script
-__BA_STATE.emote = { __BA_STATE.track = nil, id = nil, token = 0, startedAt = 0 }
+__BA_STATE.emote = { track = nil, id = nil, token = 0, startedAt = 0 }
 __BA_STATE.clickImg = { image = nil, t = 0 }  -- ultima imagen clickeada en la GUI del juego
 
 -- IDs de animacion que usa el script Animate (idle, walk, run...)
@@ -293,7 +293,8 @@ function __BA_STATE.playEmote(id, name, silent, img)
 		if token ~= __BA_STATE.emote.token then return end
 		local a = Instance.new("Animation")
 		a.AnimationId = animId
-		local ok, __BA_STATE.track = pcall(function() return __BA_STATE.Animator:LoadAnimation(a) end)
+		local ok, loadedTrack = pcall(function() return __BA_STATE.Animator:LoadAnimation(a) end)
+		__BA_STATE.track = loadedTrack
 		if not ok or not __BA_STATE.track then
 			__BA_STATE.emote.id = nil
 			__BA_STATE.notify("Could not load emote")
@@ -450,7 +451,7 @@ end)
 ----------------------------------------------------------------
 -- Biblioteca (guardados) y favoritos
 ----------------------------------------------------------------
-function __BA_STATE.libList(kind) return kind == "bundle" and Config.packs or Config.emotes end
+function __BA_STATE.libList(kind) return kind == "bundle" and __BA_STATE.Config.packs or __BA_STATE.Config.emotes end
 function __BA_STATE.libIndex(item)
 	for i, v in ipairs(__BA_STATE.libList(item.kind)) do
 		if tostring(v.id) == tostring(item.id) then return i end
@@ -989,7 +990,7 @@ function __BA_STATE.defaultStatus()
 	end
 	return "Type an ID or link for each slot and press Enter"
 end
-function __BA_STATE.setStatus(text) Status.Text = text or defaultStatus() end
+function __BA_STATE.setStatus(text) __BA_STATE.Status.Text = text or __BA_STATE.defaultStatus() end
 __BA_STATE.notify = function(text)
 	__BA_STATE.statusToken += 1
 	local t = __BA_STATE.statusToken
@@ -1893,7 +1894,7 @@ __BA_STATE.toggleButton(332, "Detect game emotes", function() return __BA_STATE.
 __BA_STATE.keyBtn = __BA_STATE.makeButton({
 	Position = UDim2.fromOffset(14, 376), Size = UDim2.new(1, -28, 0, 34), Text = "", TextSize = 12,
 }, __BA_STATE.Settings)
-function __BA_STATE.refreshKey() keyBtn.Text = "Menu key: " .. Config.menuKey end
+function __BA_STATE.refreshKey() __BA_STATE.keyBtn.Text = "Menu key: " .. __BA_STATE.Config.menuKey end
 __BA_STATE.keyBtn.MouseButton1Click:Connect(function()
 	__BA_STATE.keyBtn.Text = "Press a key..."
 	__BA_STATE.capture = function(kc)
@@ -2222,4 +2223,4 @@ end)
 -- Inicio
 ----------------------------------------------------------------
 __BA_STATE.showTab("emotes")
-__BA_STATE.notify("Loaded. Menu key: " .. Config.menuKey)
+__BA_STATE.notify("Loaded. Menu key: " .. __BA_STATE.Config.menuKey)
